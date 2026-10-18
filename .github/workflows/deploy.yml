@@ -1,0 +1,159 @@
+# DES-9 a DES-12 — Imagen, despliegue a pruebas, producción con aprobación y rollback.
+#
+# No reemplaza a ci.yml (pruebas con Testcontainers): arranca CUANDO ci.yml termina en verde
+# en un push a develop o main.
+#
+#   push a develop + CI verde -> construye imagen -> GHCR -> escaneo -> despliegue a pruebas (8081)
+#   push a main    + CI verde -> busca la imagen YA probada de ese mismo código -> aprobación -> producción (8080)
+#   manual (Run workflow)     -> rollback o status en cualquier entorno
+#
+# La etiqueta de la imagen es el hash del ÁRBOL de archivos, no del commit: si main tiene el mismo
+# código que pasó por develop, a producción va la misma imagen probada. Si main trae algo que nunca
+# pasó por develop, falla en vez de desplegarlo.
+#
+# Nota: GitHub solo dispara workflow_run con la versión de este archivo que está en la rama por defecto.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Acción
+        type: choice
+        options: [status, rollback]
+      environment:
+        description: Entorno
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.event.workflow_run.head_branch || inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------- develop -> pruebas ----------
+  build:
+    name: Construir y publicar imagen
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'develop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      sha: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - id: meta
+        name: Calcular nombre y etiqueta
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/novagest" >> "$GITHUB_OUTPUT"
+          echo "tag=$(git rev-parse --short=12 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Construir con el Dockerfile del backend y publicar
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Escanear la imagen (CRITICAL con parche disponible)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  deploy-staging:
+    name: Desplegar en pruebas
+    needs: build
+    uses: ./.github/workflows/remote.yml
+    with:
+      environment: staging
+      command: deploy staging ${{ needs.build.outputs.tag }}
+      ref: ${{ needs.build.outputs.sha }}
+      send-compose: true
+      smoke: true
+    secrets: inherit
+
+  # ---------- main -> producción ----------
+  resolve-production:
+    name: Buscar la imagen probada
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - id: meta
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/novagest" >> "$GITHUB_OUTPUT"
+          echo "tag=$(git rev-parse --short=12 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verificar que esta versión pasó por pruebas
+        env:
+          REF: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+        run: |
+          if ! docker buildx imagetools inspect "$REF" >/dev/null 2>&1; then
+            echo "::error::No existe $REF: el código de main no es idéntico a nada que haya pasado por develop. Hagan merge de develop a main sin cambios extra."
+            exit 1
+          fi
+          echo "Se desplegará $REF"
+
+  deploy-production:
+    name: Desplegar en producción
+    needs: resolve-production
+    uses: ./.github/workflows/remote.yml
+    with:
+      environment: production      # "Required reviewers" en este environment = aprobación manual
+      command: deploy production ${{ needs.resolve-production.outputs.tag }}
+      ref: ${{ github.event.workflow_run.head_sha }}
+      send-compose: true
+    secrets: inherit
+
+  # ---------- manual: rollback / status ----------
+  manual:
+    name: ${{ inputs.action }} en ${{ inputs.environment }}
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/remote.yml
+    with:
+      environment: ${{ inputs.environment }}
+      command: ${{ inputs.action }} ${{ inputs.environment }}
+      ref: ${{ github.sha }}
+    secrets: inherit

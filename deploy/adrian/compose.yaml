@@ -1,0 +1,49 @@
+# NovaGest — contenedor de la API para UN entorno (pruebas o producción) en daniel1.
+# Lo usa /opt/tramites/bin/tramites-ctl; no se levanta a mano.
+# Lo que cambia entre entornos vive en /opt/tramites/<entorno>/.env y app.env (permisos 600).
+#
+# Contrato (deploy/julio/COORDINACION-ADRIAN.md):
+#   - Puerto del contenedor 8080; en el host SOLO loopback:
+#       producción 127.0.0.1:8080 -> 8080    pruebas 127.0.0.1:8081 -> 8080
+#   - Perfil prod, PostgreSQL externo por DB_*, JWT_SECRET, comprobantes persistentes en /data/comprobantes.
+#   - No se usa el docker-compose.yml de la raíz (es de desarrollo: levanta Postgres local y perfil dev).
+
+name: ${COMPOSE_PROJECT_NAME:?falta COMPOSE_PROJECT_NAME en .env}
+
+services:
+  app:
+    image: ${APP_IMAGE:?falta APP_IMAGE en .env}:${APP_TAG:?falta la etiqueta de la imagen}
+    restart: unless-stopped
+    env_file: [app.env]            # JWT_SECRET y otras variables propias de la app
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: ${DB_HOST:?}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:?}
+      DB_USER: ${DB_USER:?}
+      DB_PASSWORD: ${DB_PASSWORD:?}
+      COMPROBANTES_DIR: /data/comprobantes
+    # Solo loopback: Nginx (Julio) lo alcanza, internet no. Nunca "8080:8080" (Docker se salta el firewall).
+    ports:
+      - "127.0.0.1:${APP_PORT:?falta APP_PORT en .env}:8080"
+    # Si la base está en este mismo servidor, DB_HOST=host.docker.internal (ver DESPLIEGUE.md, "Base de datos").
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Volumen con nombre: Docker copia el dueño de la carpeta de la imagen (usuario novagest),
+      # así la app puede escribir sin tocar permisos a mano. Uno distinto por entorno.
+      - comprobantes:/data/comprobantes
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: ${APP_MEM_LIMIT:-768m}
+    cpus: ${APP_CPUS:-1.0}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  comprobantes:
