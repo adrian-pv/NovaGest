@@ -55,6 +55,13 @@ public class Rol {
 		this.descripcion = descripcion;
 	}
 
+	/** Cambia los datos del rol. Los permisos se cambian directamente sobre getPermisos(). */
+	public void definir(String nombre, String descripcion, boolean alcanceTotal) {
+		this.nombre = nombre;
+		this.descripcion = descripcion;
+		this.alcanceTotal = alcanceTotal;
+	}
+
 	@PrePersist
 	void alCrear() {
 		creadoEn = Instant.now();

@@ -70,9 +70,13 @@ class MatrizDeRolesTests {
 			return metodo + " " + patron;
 		}
 
-		/** Ruta de prueba: cada variable de la ruta toma el valor 1. */
+		/**
+		 * Ruta de prueba: cada variable de la ruta toma un id que no existe. Asi los endpoints que borran
+		 * (por ejemplo DELETE /api/usuarios/{id}, tarjeta 12) nunca tocan a los usuarios que crea esta prueba;
+		 * con el id 1 el administrador podia eliminar al ciudadano de la matriz y sus llamadas siguientes daban 401.
+		 */
 		String ruta() {
-			return patron.replaceAll("\\{[^}]+}", "1");
+			return patron.replaceAll("\\{[^}]+}", "999999");
 		}
 
 	}
