@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { json, simularApi } from './test/api-simulada'
 import { limpiarSesion, renderizarApp } from './test/utilidades'
@@ -34,11 +34,25 @@ describe('App', () => {
 
     renderizarApp('/')
 
-    expect(await screen.findByRole('link', { name: 'Iniciar sesión' })).toHaveAttribute(
+    // Los enlaces están en la cabecera y en el contenido principal; aquí se mira el contenido
+    const principal = within(await screen.findByRole('main'))
+    expect(await principal.findByRole('link', { name: 'Iniciar sesión' })).toHaveAttribute(
       'href',
       '/ingresar',
     )
-    expect(screen.getByRole('link', { name: 'Crear cuenta' })).toHaveAttribute('href', '/registro')
+    expect(principal.getByRole('link', { name: 'Crear cuenta' })).toHaveAttribute(
+      'href',
+      '/registro',
+    )
+  })
+
+  it('pone el título de la pestaña según la pantalla', async () => {
+    simularApi({})
+
+    renderizarApp('/registro')
+
+    await screen.findByRole('heading', { name: 'Crear cuenta' })
+    expect(document.title).toBe('Crear cuenta · NovaGest')
   })
 
   it('muestra la página de no encontrado en una ruta desconocida', async () => {

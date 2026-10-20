@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { consultarSalud } from '../api/salud'
+import Insignia from '../componentes/Insignia'
+import { useTitulo } from '../componentes/useTitulo'
 import { useSesion } from '../sesion/contexto'
 
 type Estado = 'comprobando' | 'disponible' | 'no-disponible'
@@ -11,9 +13,12 @@ const TEXTOS: Record<Estado, string> = {
   'no-disponible': 'No se pudo conectar con el servidor',
 }
 
+const TONOS = { comprobando: 'neutra', disponible: 'exito', 'no-disponible': 'error' } as const
+
 export default function Inicio() {
   const [estado, setEstado] = useState<Estado>('comprobando')
   const { estado: sesion } = useSesion()
+  useTitulo()
 
   useEffect(() => {
     const control = new AbortController()
@@ -27,22 +32,32 @@ export default function Inicio() {
   }, [])
 
   return (
-    <main>
+    <section className="tarjeta hero">
       <h1>NovaGest</h1>
-      <p>Sistema de trámites ciudadanos.</p>
+      <p>
+        Registra tus trámites, paga y da seguimiento a su estado en un solo lugar, con el control de
+        acceso y la trazabilidad que exige una auditoría.
+      </p>
       <p role="status" data-estado={estado}>
-        {TEXTOS[estado]}
+        <Insignia tono={TONOS[estado]}>{TEXTOS[estado]}</Insignia>
       </p>
       {sesion === 'autenticado' && (
-        <p>
-          <Link to="/panel">Ir a mi panel</Link>
-        </p>
+        <div className="acciones">
+          <Link className="boton boton--primario" to="/panel">
+            Ir a mi panel
+          </Link>
+        </div>
       )}
       {sesion === 'anonimo' && (
-        <p>
-          <Link to="/ingresar">Iniciar sesión</Link> · <Link to="/registro">Crear cuenta</Link>
-        </p>
+        <div className="acciones">
+          <Link className="boton boton--primario" to="/ingresar">
+            Iniciar sesión
+          </Link>
+          <Link className="boton boton--secundario" to="/registro">
+            Crear cuenta
+          </Link>
+        </div>
       )}
-    </main>
+    </section>
   )
 }

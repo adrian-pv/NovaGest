@@ -1,7 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { Link, Navigate, useLocation } from 'react-router-dom'
+import Aviso from '../componentes/Aviso'
+import AvisoError from '../componentes/AvisoError'
+import Boton from '../componentes/Boton'
+import Campo from '../componentes/Campo'
+import { useTitulo } from '../componentes/useTitulo'
 import { useSesion } from '../sesion/contexto'
-import { mensajeDeError, rutaInternaSegura } from './formularios'
+import { rutaInternaSegura } from './formularios'
 
 interface EstadoDeNavegacion {
   desde?: unknown
@@ -13,10 +18,11 @@ export default function Ingresar() {
   const ubicacion = useLocation()
   const navegacion = (ubicacion.state ?? {}) as EstadoDeNavegacion
   const destino = rutaInternaSegura(navegacion.desde, '/panel')
+  useTitulo('Iniciar sesión')
 
   const [correo, setCorreo] = useState('')
   const [clave, setClave] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [enviando, setEnviando] = useState(false)
 
   if (estado === 'autenticado') return <Navigate to={destino} replace />
@@ -28,7 +34,7 @@ export default function Ingresar() {
     try {
       await iniciarSesion(correo.trim(), clave)
     } catch (fallo) {
-      setError(mensajeDeError(fallo))
+      setError(fallo)
       setClave('')
     } finally {
       setEnviando(false)
@@ -36,42 +42,40 @@ export default function Ingresar() {
   }
 
   return (
-    <main>
+    <section className="tarjeta pagina-estrecha">
       <h1>Iniciar sesión</h1>
-      {navegacion.aviso && <p role="status">{navegacion.aviso}</p>}
-      <form onSubmit={enviar} noValidate>
-        <p>
-          <label htmlFor="correo">Correo</label>
-          <br />
-          <input
-            id="correo"
-            type="email"
-            autoComplete="username"
-            required
-            value={correo}
-            onChange={(e) => setCorreo(e.target.value)}
-          />
-        </p>
-        <p>
-          <label htmlFor="clave">Contraseña</label>
-          <br />
-          <input
-            id="clave"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={clave}
-            onChange={(e) => setClave(e.target.value)}
-          />
-        </p>
-        {error && <p role="alert">{error}</p>}
-        <button type="submit" disabled={enviando || !correo.trim() || !clave}>
-          {enviando ? 'Ingresando...' : 'Ingresar'}
-        </button>
+      {navegacion.aviso && <Aviso tipo="exito">{navegacion.aviso}</Aviso>}
+      <form className="formulario" onSubmit={enviar} noValidate>
+        <Campo
+          etiqueta="Correo"
+          type="email"
+          autoComplete="username"
+          required
+          value={correo}
+          onChange={(e) => setCorreo(e.target.value)}
+        />
+        <Campo
+          etiqueta="Contraseña"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={clave}
+          onChange={(e) => setClave(e.target.value)}
+        />
+        {Boolean(error) && <AvisoError error={error} titulo="No se pudo iniciar sesión" />}
+        <Boton
+          type="submit"
+          bloque
+          cargando={enviando}
+          textoCargando="Ingresando..."
+          disabled={!correo.trim() || !clave}
+        >
+          Ingresar
+        </Boton>
       </form>
-      <p>
+      <p style={{ marginTop: '1rem' }}>
         ¿No tienes cuenta? <Link to="/registro">Crear cuenta</Link>
       </p>
-    </main>
+    </section>
   )
 }

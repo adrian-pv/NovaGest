@@ -1,12 +1,17 @@
 import { useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { registrar } from '../api/auth'
+import AvisoError from '../componentes/AvisoError'
+import Boton from '../componentes/Boton'
+import Campo from '../componentes/Campo'
+import { useTitulo } from '../componentes/useTitulo'
 import { useSesion } from '../sesion/contexto'
-import { mensajeDeError, motivoDeCampo } from './formularios'
+import { motivoDeCampo } from './formularios'
 
 export default function Registro() {
   const { estado } = useSesion()
   const navegar = useNavigate()
+  useTitulo('Crear cuenta')
 
   const [nombre, setNombre] = useState('')
   const [correo, setCorreo] = useState('')
@@ -40,68 +45,60 @@ export default function Registro() {
   const hayMotivoDeCampo = Boolean(motivoNombre || motivoCorreo || motivoClave)
 
   return (
-    <main>
+    <section className="tarjeta pagina-estrecha">
       <h1>Crear cuenta</h1>
-      <form onSubmit={enviar} noValidate>
-        <p>
-          <label htmlFor="nombre">Nombre completo</label>
-          <br />
-          <input
-            id="nombre"
-            autoComplete="name"
-            required
-            maxLength={120}
-            aria-invalid={Boolean(motivoNombre)}
-            aria-describedby={motivoNombre ? 'error-nombre' : undefined}
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
+      <form className="formulario" onSubmit={enviar} noValidate>
+        <Campo
+          etiqueta="Nombre completo"
+          autoComplete="name"
+          required
+          maxLength={120}
+          error={motivoNombre}
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+        />
+        <Campo
+          etiqueta="Correo"
+          type="email"
+          autoComplete="email"
+          required
+          maxLength={254}
+          error={motivoCorreo}
+          value={correo}
+          onChange={(e) => setCorreo(e.target.value)}
+        />
+        <Campo
+          etiqueta="Contraseña"
+          ayuda="Mínimo 8 caracteres."
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={8}
+          maxLength={72}
+          error={motivoClave}
+          value={clave}
+          onChange={(e) => setClave(e.target.value)}
+        />
+        {Boolean(error) && (
+          <AvisoError
+            error={error}
+            titulo={hayMotivoDeCampo ? 'Revisa los datos' : undefined}
+            mostrarCampos={false}
           />
-          {motivoNombre && <span id="error-nombre"> {motivoNombre}</span>}
-        </p>
-        <p>
-          <label htmlFor="correo">Correo</label>
-          <br />
-          <input
-            id="correo"
-            type="email"
-            autoComplete="email"
-            required
-            maxLength={254}
-            aria-invalid={Boolean(motivoCorreo)}
-            aria-describedby={motivoCorreo ? 'error-correo' : undefined}
-            value={correo}
-            onChange={(e) => setCorreo(e.target.value)}
-          />
-          {motivoCorreo && <span id="error-correo"> {motivoCorreo}</span>}
-        </p>
-        <p>
-          <label htmlFor="clave">Contraseña (mínimo 8 caracteres)</label>
-          <br />
-          <input
-            id="clave"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            maxLength={72}
-            aria-invalid={Boolean(motivoClave)}
-            aria-describedby={motivoClave ? 'error-clave' : undefined}
-            value={clave}
-            onChange={(e) => setClave(e.target.value)}
-          />
-          {motivoClave && <span id="error-clave"> {motivoClave}</span>}
-        </p>
-        {Boolean(error) && !hayMotivoDeCampo && <p role="alert">{mensajeDeError(error)}</p>}
-        <button
+        )}
+        <Boton
           type="submit"
-          disabled={enviando || !nombre.trim() || !correo.trim() || clave.length < 8}
+          bloque
+          cargando={enviando}
+          textoCargando="Creando cuenta..."
+          disabled={!nombre.trim() || !correo.trim() || clave.length < 8}
         >
-          {enviando ? 'Creando cuenta...' : 'Crear cuenta'}
-        </button>
+          Crear cuenta
+        </Boton>
       </form>
-      <p>
+      <p style={{ marginTop: '1rem' }}>
         ¿Ya tienes cuenta? <Link to="/ingresar">Iniciar sesión</Link>
       </p>
-    </main>
+    </section>
   )
 }

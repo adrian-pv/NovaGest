@@ -1,4 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import Cargando from '../componentes/Cargando'
 import SinPermiso from '../paginas/SinPermiso'
 import { useSesion } from './contexto'
 
@@ -11,13 +12,7 @@ export default function RutaProtegida({ permiso }: { permiso?: string }) {
   const { estado, tienePermiso } = useSesion()
   const ubicacion = useLocation()
 
-  if (estado === 'cargando') {
-    return (
-      <main>
-        <p role="status">Cargando sesión...</p>
-      </main>
-    )
-  }
+  if (estado === 'cargando') return <Cargando texto="Cargando sesión..." />
   if (estado === 'anonimo') {
     return (
       <Navigate to="/ingresar" replace state={{ desde: ubicacion.pathname + ubicacion.search }} />
