@@ -30,6 +30,7 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET:-}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       COMPROBANTES_DIR: /data/comprobantes
       CORS_ORIGINS: ${CORS_ORIGINS:-}
     ports:
