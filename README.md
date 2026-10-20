@@ -23,6 +23,20 @@ docker compose up --build    # app en http://localhost:8080, base en el puerto D
 docker compose down          # detiene; agregar -v borra tambien los datos de la base
 ```
 
+## Frontend (carpeta `frontend/`)
+React + Vite + TypeScript. Requiere Node 22 o superior.
+```
+cd frontend
+npm install                # solo la primera vez
+npm run dev                # http://localhost:5173, con la API de Spring levantada en el 8080
+npm run verify             # lint + formato + pruebas + compilacion (lo mismo que corre la CI)
+```
+- En desarrollo Vite reenvia `/api` y `/actuator/health` al backend (proxy), asi el navegador ve un solo origen y no hace falta CORS. Para apuntar a otro backend: `VITE_API_PROXY` en `frontend/.env.local` (ver `frontend/.env.example`).
+- Todas las llamadas a la API pasan por `src/api/cliente.ts`: agrega el token, convierte los errores Problem Details en `ErrorApi` y nunca escribe el token en consola.
+- El token de acceso vive solo en memoria (`src/api/token.ts`), nunca en localStorage.
+- Cada pantalla nueva: una carpeta o archivo en `src/paginas/`, su ruta en `src/App.tsx` y su prueba junto al archivo (`*.test.tsx`).
+- Si el puerto 8080 esta ocupado por otro programa (por ejemplo Apache), el backend no arranca y el frontend mostrara "No se pudo conectar con el servidor".
+
 ## Salud y documentacion de la API
 Con la app levantada (perfil `dev`), sin necesidad de token:
 - Salud: http://localhost:8080/actuator/health (responde `{"status":"UP"}`, sin detalles internos)
@@ -33,6 +47,28 @@ Para probar endpoints protegidos en Swagger: ejecutar `POST /api/auth/login`, co
 
 ## Configuracion
 Copiar `.env.example` a `.env` y completar. Los secretos entran solo por variables de entorno; `.env` esta en `.gitignore`.
+
+## Datos de demostracion (perfil dev)
+Con el perfil `dev` la app carga un usuario de ejemplo por rol y un tercer tipo de tramite (constancia de residencia), desde `src/main/resources/db/dev/R__datos_demo.sql`. En `prod` no existen. Boleto de ornato y Pago de IGSS salen de la migracion V4.
+
+| Rol | Correo | Que demostrar |
+|---|---|---|
+| Ciudadano | `ciudadano@novagest.test` | crear y enviar un tramite, subir comprobante, ver su historial |
+| Gestor | `gestor@novagest.test` | tomar, observar, rechazar, pasar a por pagar y validar pago |
+| Auditor | `auditor@novagest.test` | consultar tramites, pagos, usuarios, roles y bitacora (solo lectura) |
+| Administrador | `administrador@novagest.test` | crear usuarios, asignar roles y mantener tipos de tramite |
+
+La contrasena de los cuatro es el valor de `DEMO_PASSWORD` de tu `.env` (minimo 8 caracteres, sin comillas). Si falta, la app no arranca en `dev` y avisa en el log.
+
+Si cambias `DEMO_PASSWORD` despues de la primera carga, los usuarios ya existentes conservan la clave anterior: ejecutar `docker compose down -v` y levantar de nuevo.
+
+## Arranque rapido (menos de 15 minutos)
+1. `git clone` y `git checkout develop`.
+2. Copiar `.env.example` a `.env` y completar `DB_USER`, `DB_PASSWORD`, `JWT_SECRET` (32 caracteres o mas) y `DEMO_PASSWORD`, con valores de prueba.
+3. `docker compose up --build` y esperar a que la app responda.
+4. Abrir http://localhost:8080/actuator/health (debe decir `UP`) y http://localhost:8080/swagger-ui.html.
+5. `POST /api/auth/login` con uno de los correos de arriba, copiar el `accessToken` y pegarlo en **Authorize**.
+
 
 ## Flujo de trabajo
 - `main` es la version entregable y `develop` es integracion. Ninguna se toca directo.

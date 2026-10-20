@@ -39,3 +39,10 @@ application-local.properties
 
 ### Comprobantes de pago subidos en local (nunca se suben al repositorio) ###
 comprobantes/
+
+### Frontend ###
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/*.tsbuildinfo

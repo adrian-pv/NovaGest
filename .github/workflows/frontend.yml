@@ -1,0 +1,46 @@
+# Tarjeta 30: verificación del frontend (lint, formato, pruebas y compilación) en cada pull request y push
+# a develop o main. Va en un archivo aparte para no tocar ci.yml del backend.
+name: Frontend
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    name: Frontend: compilar y probar
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Formato
+        run: npm run format:check
+
+      - name: Pruebas
+        run: npm test
+
+      - name: Compilar
+        run: npm run build
