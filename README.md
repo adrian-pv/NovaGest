@@ -23,6 +23,20 @@ docker compose up --build    # app en http://localhost:8080, base en el puerto D
 docker compose down          # detiene; agregar -v borra tambien los datos de la base
 ```
 
+## Frontend (carpeta `frontend/`)
+React + Vite + TypeScript. Requiere Node 22 o superior.
+```
+cd frontend
+npm install                # solo la primera vez
+npm run dev                # http://localhost:5173, con la API de Spring levantada en el 8080
+npm run verify             # lint + formato + pruebas + compilacion (lo mismo que corre la CI)
+```
+- En desarrollo Vite reenvia `/api` y `/actuator/health` al backend (proxy), asi el navegador ve un solo origen y no hace falta CORS. Para apuntar a otro backend: `VITE_API_PROXY` en `frontend/.env.local` (ver `frontend/.env.example`).
+- Todas las llamadas a la API pasan por `src/api/cliente.ts`: agrega el token, convierte los errores Problem Details en `ErrorApi` y nunca escribe el token en consola.
+- El token de acceso vive solo en memoria (`src/api/token.ts`), nunca en localStorage.
+- Cada pantalla nueva: una carpeta o archivo en `src/paginas/`, su ruta en `src/App.tsx` y su prueba junto al archivo (`*.test.tsx`).
+- Si el puerto 8080 esta ocupado por otro programa (por ejemplo Apache), el backend no arranca y el frontend mostrara "No se pudo conectar con el servidor".
+
 ## Salud y documentacion de la API
 Con la app levantada (perfil `dev`), sin necesidad de token:
 - Salud: http://localhost:8080/actuator/health (responde `{"status":"UP"}`, sin detalles internos)
