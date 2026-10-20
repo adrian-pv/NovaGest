@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   verificar:
-    name: Frontend: compilar y probar
+    name: 'Frontend - compilar y probar'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
