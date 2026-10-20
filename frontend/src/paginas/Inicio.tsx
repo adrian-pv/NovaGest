@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { consultarSalud } from '../api/salud'
+import { useSesion } from '../sesion/contexto'
 
 type Estado = 'comprobando' | 'disponible' | 'no-disponible'
 
@@ -11,6 +13,7 @@ const TEXTOS: Record<Estado, string> = {
 
 export default function Inicio() {
   const [estado, setEstado] = useState<Estado>('comprobando')
+  const { estado: sesion } = useSesion()
 
   useEffect(() => {
     const control = new AbortController()
@@ -30,6 +33,16 @@ export default function Inicio() {
       <p role="status" data-estado={estado}>
         {TEXTOS[estado]}
       </p>
+      {sesion === 'autenticado' && (
+        <p>
+          <Link to="/panel">Ir a mi panel</Link>
+        </p>
+      )}
+      {sesion === 'anonimo' && (
+        <p>
+          <Link to="/ingresar">Iniciar sesión</Link> · <Link to="/registro">Crear cuenta</Link>
+        </p>
+      )}
     </main>
   )
 }

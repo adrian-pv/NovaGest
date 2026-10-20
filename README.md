@@ -33,7 +33,10 @@ npm run verify             # lint + formato + pruebas + compilacion (lo mismo qu
 ```
 - En desarrollo Vite reenvia `/api` y `/actuator/health` al backend (proxy), asi el navegador ve un solo origen y no hace falta CORS. Para apuntar a otro backend: `VITE_API_PROXY` en `frontend/.env.local` (ver `frontend/.env.example`).
 - Todas las llamadas a la API pasan por `src/api/cliente.ts`: agrega el token, convierte los errores Problem Details en `ErrorApi` y nunca escribe el token en consola.
-- El token de acceso vive solo en memoria (`src/api/token.ts`), nunca en localStorage.
+- Sesion (`src/sesion/`): el token de acceso vive solo en memoria (`src/api/token.ts`), nunca en localStorage; el de renovacion se guarda en `sessionStorage` para sobrevivir a F5 (decision y alternativa en `src/sesion/almacen.ts`). Al recibir 401 el cliente renueva la sesion y reintenta una vez.
+- El token de renovacion es de un solo uso y reusarlo revoca todas las sesiones del usuario, por eso `renovarSesion()` (`src/sesion/renovacion.ts`) comparte una sola renovacion entre todas las llamadas. No llames a `renovarTokens` directamente desde una pantalla.
+- Para proteger una ruta: dentro de `<Route element={<RutaProtegida />}>`; si ademas exige un permiso, `<RutaProtegida permiso="tramite:leer" />`. El permiso sale de `GET /api/usuarios/yo` (el token no los lleva) y solo oculta cosas: la API vuelve a comprobarlo.
+- Para probar con los usuarios de demostracion (ver "Datos de demostracion"): inicia sesion con `ciudadano@novagest.test`, `gestor@novagest.test`, `auditor@novagest.test` o `administrador@novagest.test` y la clave `DEMO_PASSWORD` de tu `.env`.
 - Cada pantalla nueva: una carpeta o archivo en `src/paginas/`, su ruta en `src/App.tsx` y su prueba junto al archivo (`*.test.tsx`).
 - Si el puerto 8080 esta ocupado por otro programa (por ejemplo Apache), el backend no arranca y el frontend mostrara "No se pudo conectar con el servidor".
 
