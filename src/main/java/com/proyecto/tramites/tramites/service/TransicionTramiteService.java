@@ -4,6 +4,7 @@ import com.proyecto.tramites.auditoria.service.BitacoraService;
 import com.proyecto.tramites.comun.excepcion.DatosInvalidosException;
 import com.proyecto.tramites.comun.util.Actor;
 import com.proyecto.tramites.tramites.dto.TramiteResponse;
+import com.proyecto.tramites.tramites.dto.TransicionDisponibleResponse;
 import com.proyecto.tramites.tramites.dto.TransicionRequest;
 import com.proyecto.tramites.tramites.entity.EstadoTramite;
 import com.proyecto.tramites.tramites.entity.TransicionTramite;
@@ -11,7 +12,9 @@ import com.proyecto.tramites.tramites.entity.Tramite;
 import com.proyecto.tramites.tramites.entity.TramiteHistorial;
 import com.proyecto.tramites.tramites.repository.TramiteHistorialRepository;
 import com.proyecto.tramites.tramites.repository.TramiteRepository;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -69,12 +72,51 @@ public class TransicionTramiteService {
 		return TramiteResponse.de(tramite, validador.deJson(tramite.getDatos()));
 	}
 
-	private static void verificarQuien(Actor actor, Tramite tramite, TransicionTramite transicion) {
-		boolean permitido = switch (transicion.quien()) {
+	/**
+	 * Tarjeta 28: las transiciones que quien consulta puede hacer desde el estado actual del tramite, con las mismas
+	 * reglas que aplica transicionar (visibilidad, quien, y condiciones). Quien no tiene el permiso de editar no
+	 * puede ejecutar ninguna, asi que recibe la lista vacia. Tramite ajeno o inexistente: 404.
+	 */
+	@Transactional(readOnly = true)
+	public List<TransicionDisponibleResponse> disponibles(Actor actor, Long id, boolean puedeEditar) {
+		Tramite tramite = tramites.findByIdAndEliminadoEnIsNull(id)
+				.filter(t -> actor.alcanceTotal() || t.getCiudadanoId().equals(actor.id()))
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "El tramite no existe"));
+		if (!puedeEditar) {
+			return List.of();
+		}
+		return Arrays.stream(TransicionTramite.values())
+				.filter(t -> t.desde() == tramite.getEstado())
+				.filter(t -> tieneAutoridad(actor, tramite, t))
+				.map(t -> TransicionDisponibleResponse.de(t, motivoNoEjecutable(tramite, t)))
+				.toList();
+	}
+
+	/** Por que todavia no se puede ejecutar, o null si ya se puede. Los comentarios los pide la interfaz al enviar. */
+	private String motivoNoEjecutable(Tramite tramite, TransicionTramite transicion) {
+		if (transicion.exigeDatosCompletos()) {
+			try {
+				validador.exigirCompletitud(tramite.getTipoTramite(), validador.deJson(tramite.getDatos()));
+			}
+			catch (DatosInvalidosException e) {
+				return "Faltan campos obligatorios del tramite";
+			}
+		}
+		if (transicion.exigePagoValidado() && !pagos.tienePagoValidado(tramite.getId())) {
+			return "El tramite no tiene un pago validado";
+		}
+		return null;
+	}
+
+	private static boolean tieneAutoridad(Actor actor, Tramite tramite, TransicionTramite transicion) {
+		return switch (transicion.quien()) {
 			case DUENO -> tramite.getCiudadanoId().equals(actor.id());
 			case GESTION -> actor.alcanceTotal();
 		};
-		if (!permitido) {
+	}
+
+	private static void verificarQuien(Actor actor, Tramite tramite, TransicionTramite transicion) {
+		if (!tieneAutoridad(actor, tramite, transicion)) {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No puedes realizar esta transicion");
 		}
 	}

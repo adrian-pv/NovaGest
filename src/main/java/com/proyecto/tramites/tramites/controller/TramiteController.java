@@ -6,6 +6,7 @@ import com.proyecto.tramites.tramites.dto.FiltroTramites;
 import com.proyecto.tramites.tramites.dto.TramiteActualizarRequest;
 import com.proyecto.tramites.tramites.dto.TramiteRequest;
 import com.proyecto.tramites.tramites.dto.TramiteResponse;
+import com.proyecto.tramites.tramites.dto.TransicionDisponibleResponse;
 import com.proyecto.tramites.tramites.dto.TransicionRequest;
 import com.proyecto.tramites.tramites.service.TramiteService;
 import com.proyecto.tramites.tramites.service.TransicionTramiteService;
@@ -92,6 +93,20 @@ public class TramiteController {
 	public TramiteResponse transicionar(@PathVariable Long id, @Valid @RequestBody TransicionRequest solicitud,
 			Authentication autenticacion) {
 		return transiciones.transicionar(Actor.de(autenticacion), id, solicitud);
+	}
+
+	/**
+	 * Permiso: tramite:leer. Transiciones que quien consulta puede hacer ahora sobre el tramite; la interfaz pinta solo
+	 * esos botones. Sin el permiso tramite:editar la lista llega vacia. Las condiciones sin cumplir llegan como
+	 * ejecutable=false con su motivo.
+	 */
+	@GetMapping("/{id}/transiciones")
+	@PreAuthorize("hasAuthority('tramite:leer')")
+	public List<TransicionDisponibleResponse> transicionesDisponibles(@PathVariable Long id,
+			Authentication autenticacion) {
+		boolean puedeEditar = autenticacion.getAuthorities().stream()
+				.anyMatch(a -> "tramite:editar".equals(a.getAuthority()));
+		return transiciones.disponibles(Actor.de(autenticacion), id, puedeEditar);
 	}
 
 	/** Permiso: tramite:leer. Cambios de estado del tramite, del mas antiguo al mas reciente. */
