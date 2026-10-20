@@ -32,6 +32,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       COMPROBANTES_DIR: /data/comprobantes
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
     ports:
       - "8080:8080"
     volumes:
