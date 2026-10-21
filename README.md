@@ -54,6 +54,9 @@ Con la app levantada (perfil `dev`), sin necesidad de token:
 
 Para probar endpoints protegidos en Swagger: ejecutar `POST /api/auth/login`, copiar el `accessToken` y pegarlo en **Authorize**. Cada operacion indica el permiso que exige. En el perfil `prod` la documentacion esta apagada.
 
+## Cabeceras de seguridad HTTP
+Todas las respuestas (tambien las de error) llevan `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Permissions-Policy`, `Cache-Control: no-store` y una `Content-Security-Policy` que no deja cargar nada (`default-src 'none'; frame-ancestors 'none'`). Swagger tiene su propia politica, limitada a su mismo origen. `Strict-Transport-Security` (1 ano, sin subdominios ni preload) solo sale en respuestas HTTPS y se ajusta con `app.seguridad.hsts-segundos` (0 = apagado). Detras de un proxy el backend debe ver el esquema original para enviarla (tarjeta 45): el proxy debe mandar `X-Forwarded-Proto`. La politica del frontend (HTML, scripts) es otra y se define donde se sirve (tarjeta 42). Codigo en `comun/config/CabecerasSeguridad.java`.
+
 ## Configuracion
 Copiar `.env.example` a `.env` y completar. Los secretos entran solo por variables de entorno; `.env` esta en `.gitignore`.
 
