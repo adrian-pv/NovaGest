@@ -815,3 +815,25 @@ input[type='file'].campo__entrada {
     font-size: 1.75rem;
   }
 }
+
+/* Editor de campos de un tipo de trámite (tarjeta 37) */
+.campo-tipo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem 1rem;
+  align-items: start;
+  margin: 1rem 0 0;
+  padding: 0.75rem 1rem 1rem;
+  border: 1px solid var(--borde);
+  border-radius: 0.5rem;
+}
+
+.campo-tipo legend {
+  padding: 0 0.4rem;
+  font-weight: 700;
+}
+
+.campo-tipo .acciones-formulario,
+.campo-tipo .campo--casilla {
+  grid-column: 1 / -1;
+}

@@ -11,6 +11,9 @@ import DetalleTramite from './tramites/DetalleTramite'
 import EditarTramite from './tramites/EditarTramite'
 import ListaTramites from './tramites/ListaTramites'
 import NuevoTramite from './tramites/NuevoTramite'
+import EditarTipo from './tipos/EditarTipo'
+import ListaTipos from './tipos/ListaTipos'
+import NuevoTipo from './tipos/NuevoTipo'
 
 /**
  * Rutas de la aplicación. Todas se dibujan dentro del marco común (Diseno). Las que exigen sesión van dentro de
@@ -39,6 +42,13 @@ export default function App() {
         </Route>
         <Route element={<RutaProtegida permiso="tramite:editar" />}>
           <Route path="/tramites/:id/editar" element={<EditarTramite />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="tipo_tramite:editar" />}>
+          <Route path="/tipos" element={<ListaTipos />} />
+          <Route path="/tipos/:id/editar" element={<EditarTipo />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="tipo_tramite:crear" />}>
+          <Route path="/tipos/nuevo" element={<NuevoTipo />} />
         </Route>
         <Route path="*" element={<NoEncontrado />} />
       </Route>
