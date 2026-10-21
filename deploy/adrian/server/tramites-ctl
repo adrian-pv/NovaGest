@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+# tramites-ctl — única puerta de entrada del pipeline al servidor.
+#
+# La llave SSH del pipeline está amarrada a este script (command= en
+# authorized_keys), así que con esa llave SOLO se puede:
+#   deploy   <staging|production> <etiqueta>   (compose.yaml opcional por stdin)
+#   rollback <staging|production>
+#   status   <staging|production>
+#
+# Uso manual en el servidor:  sudo -u deploy /opt/tramites/bin/tramites-ctl status staging
+set -euo pipefail
+
+BASE="${TRAMITES_BASE:-/opt/tramites}"
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-180}"
+KEEP_PREDEPLOY_BACKUPS="${KEEP_PREDEPLOY_BACKUPS:-10}"
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+log() { echo "[$(date '+%F %T')] $*"; }
+
+# Por SSH llega en SSH_ORIGINAL_COMMAND; a mano, como argumentos.
+if [[ -n "${SSH_ORIGINAL_COMMAND:-}" ]]; then
+  read -r -a ARGS <<<"$SSH_ORIGINAL_COMMAND"
+else
+  ARGS=("$@")
+fi
+# Opcional al final: by=<usuario de GitHub>, para la bitácora.
+if (( ${#ARGS[@]} > 0 )) && [[ "${ARGS[-1]}" =~ ^by=([A-Za-z0-9-]{1,39})$ ]]; then
+  DEPLOY_ACTOR="${BASH_REMATCH[1]}"
+  unset 'ARGS[-1]'
+fi
+(( ${#ARGS[@]} >= 2 && ${#ARGS[@]} <= 3 )) || die "uso: deploy <entorno> <etiqueta> | rollback <entorno> | status <entorno>"
+
+ACTION="${ARGS[0]}"
+ENVIRONMENT="${ARGS[1]}"
+TAG="${ARGS[2]:-}"
+
+[[ "$ENVIRONMENT" =~ ^(staging|production)$ ]] || die "entorno inválido: $ENVIRONMENT"
+DIR="$BASE/$ENVIRONMENT"
+[[ -d "$DIR" ]] || die "no existe $DIR (¿corrieron setup-server.sh?)"
+[[ -f "$DIR/.env" && -f "$DIR/app.env" ]] || die "faltan $DIR/.env o $DIR/app.env"
+! grep -q 'CAMBIAR' "$DIR/.env" "$DIR/app.env" || die "quedan valores CAMBIAR en $DIR/.env o app.env; llenarlos primero"
+# Dentro del contenedor, 127.0.0.1 es el propio contenedor: nunca llegaría a PostgreSQL.
+case "$(grep -E '^DB_HOST=' "$DIR/.env" | tail -n1 | cut -d= -f2-)" in
+  127.0.0.1|localhost|::1) die "DB_HOST=localhost no funciona dentro del contenedor; usar la IP/host que indique el DBA (ver DESPLIEGUE.md, 'Base de datos')" ;;
+esac
+
+COMPOSE=(docker compose --project-directory "$DIR" -f "$DIR/compose.yaml" --env-file "$DIR/.env")
+AUDIT_LOG="$DIR/deploy.log"
+WHO="${DEPLOY_ACTOR:-${SUDO_USER:-$(id -un)}}${SSH_CONNECTION:+ desde ${SSH_CONNECTION%% *}}"
+
+audit() { echo "$(date -u '+%FT%TZ') | $ENVIRONMENT | $* | $WHO" >>"$AUDIT_LOG"; }
+current_tag()  { cat "$DIR/current_tag"  2>/dev/null || true; }
+previous_tag() { cat "$DIR/previous_tag" 2>/dev/null || true; }
+
+# Un despliegue a la vez por entorno.
+exec 9>"$DIR/.lock"
+flock -w 600 9 || die "otro despliegue sigue en curso en $ENVIRONMENT"
+
+# Lee una variable de .env sin ejecutar el archivo.
+envval() { grep -E "^$1=" "$DIR/.env" | tail -n1 | cut -d= -f2- || true; }
+
+# La imagen de NovaGest no trae curl ni HEALTHCHECK: la salud se comprueba desde el host,
+# por el mismo puerto loopback que usa Nginx (contrato: GET /actuator/health -> "UP").
+wait_healthy() {
+  local cid state port waited=0
+  port="$(envval APP_PORT)"
+  cid="$("${COMPOSE[@]}" ps -q app)"
+  [[ -n "$cid" ]] || return 1
+  while (( waited < HEALTH_TIMEOUT )); do
+    state="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo missing)"
+    case "$state" in exited|dead|missing) return 1 ;; esac
+    if curl -fsS --max-time 3 "http://127.0.0.1:${port}/actuator/health" 2>/dev/null | grep -q '"status":"UP"'; then
+      return 0
+    fi
+    sleep 5; waited=$((waited + 5))
+  done
+  return 1
+}
+
+# Respaldo de la base antes de migrar, con el pg_dump del host.
+# host.docker.internal es como el contenedor ve al host; desde el host es 127.0.0.1.
+backup_before_migration() {
+  [[ "$ENVIRONMENT" == production ]] || return 0
+  command -v pg_dump >/dev/null \
+    || die "falta pg_dump en el servidor (sudo apt install postgresql-client); sin respaldo no se despliega a producción"
+  mkdir -p "$DIR/backups"
+  local stamp file
+  stamp="$(date -u '+%Y%m%dT%H%M%SZ')"
+  file="$DIR/backups/pre-deploy-$stamp-$1.dump"
+  log "Respaldo previo a la migración (Flyway corre al arrancar): $file"
+  local host port
+  host="$(envval DB_HOST)"; port="$(envval DB_PORT)"
+  [[ "$host" == host.docker.internal ]] && host=127.0.0.1
+  PGPASSWORD="$(envval DB_PASSWORD)" pg_dump -Fc \
+    -h "${host:-127.0.0.1}" -p "${port:-5432}" \
+    -U "$(envval DB_USER)" -d "$(envval DB_NAME)" >"$file.tmp" \
+    || { rm -f "$file.tmp"; die "pg_dump falló; no se despliega sin respaldo"; }
+  mv "$file.tmp" "$file"; chmod 600 "$file"
+  # Conserva solo los últimos N respaldos previos a despliegue.
+  # (los nombres los genera este script: sin espacios)
+  # shellcheck disable=SC2012
+  ls -1t "$DIR"/backups/pre-deploy-*.dump 2>/dev/null | tail -n +$((KEEP_PREDEPLOY_BACKUPS + 1)) | xargs -r rm -f
+  LAST_BACKUP="$file"
+}
+
+# Levanta la etiqueta pedida; si no queda sana, vuelve sola a la que estaba.
+deploy_tag() {
+  local tag="$1" kind="$2" before
+  before="$(current_tag)"
+  LAST_BACKUP=""
+
+  log "$kind en $ENVIRONMENT: ${before:-(nada)} -> $tag"
+  export APP_TAG="$tag"            # compose lo necesita en TODAS sus llamadas (ps, logs, up)
+  "${COMPOSE[@]}" pull -q app
+  backup_before_migration "$tag"
+  "${COMPOSE[@]}" up -d --remove-orphans
+
+  if wait_healthy; then
+    if [[ "$before" != "$tag" ]]; then
+      [[ -n "$before" ]] && echo "$before" >"$DIR/previous_tag"
+      echo "$tag" >"$DIR/current_tag"
+    fi
+    audit "$kind OK $tag (antes: ${before:-ninguna})"
+    log "OK: $ENVIRONMENT corre $tag"
+    return 0
+  fi
+
+  log "La versión $tag no quedó sana en ${HEALTH_TIMEOUT}s. Últimos logs:"
+  "${COMPOSE[@]}" logs --tail 80 app || true
+  audit "$kind FALLÓ $tag"
+
+  if [[ -n "$before" && "$before" != "$tag" ]]; then
+    log "Volviendo automáticamente a $before"
+    export APP_TAG="$before"
+    "${COMPOSE[@]}" up -d --remove-orphans
+    if wait_healthy; then
+      audit "reversión automática OK $before"
+      log "Se restauró $before."
+    else
+      audit "reversión automática FALLÓ $before"
+      log "ATENCIÓN: $before tampoco quedó sana."
+    fi
+    if [[ -n "$LAST_BACKUP" ]]; then
+      log "Si la migración de $tag cambió la base, el respaldo previo está en $LAST_BACKUP (ver DESPLIEGUE.md, tarjeta 12)."
+    fi
+  fi
+  return 1
+}
+
+case "$ACTION" in
+  deploy)
+    [[ "$TAG" =~ ^[0-9a-f]{7,64}$ ]] || die "etiqueta inválida: '$TAG' (se esperan solo caracteres hex)"
+    # Si el pipeline manda compose.yaml por stdin, se valida antes de reemplazar.
+    if [[ ! -t 0 ]]; then
+      tmp="$(mktemp "$DIR/compose.yaml.XXXXXX")"
+      cat >"$tmp"
+      if [[ -s "$tmp" ]]; then
+        APP_TAG="$TAG" docker compose --project-directory "$DIR" -f "$tmp" --env-file "$DIR/.env" config -q \
+          || { rm -f "$tmp"; die "compose.yaml recibido no es válido"; }
+        chmod 644 "$tmp"; mv "$tmp" "$DIR/compose.yaml"
+        log "compose.yaml actualizado."
+      else
+        rm -f "$tmp"
+      fi
+    fi
+    [[ -f "$DIR/compose.yaml" ]] || die "falta $DIR/compose.yaml"
+    deploy_tag "$TAG" "deploy"
+    ;;
+  rollback)
+    [[ -z "$TAG" ]] || die "rollback no lleva etiqueta; vuelve a la anterior registrada"
+    prev="$(previous_tag)"
+    [[ -n "$prev" ]] || die "no hay versión anterior registrada en $ENVIRONMENT"
+    deploy_tag "$prev" "rollback"
+    ;;
+  status)
+    [[ -z "$TAG" ]] || die "status no lleva más argumentos"
+    echo "entorno:   $ENVIRONMENT"
+    echo "actual:    $(current_tag)"
+    echo "anterior:  $(previous_tag)"
+    cur="$(current_tag)"
+    APP_TAG="${cur:-none}" "${COMPOSE[@]}" ps || true
+    port="$(envval APP_PORT)"
+    echo -n "health 127.0.0.1:${port}: "
+    curl -fsS --max-time 3 "http://127.0.0.1:${port}/actuator/health" 2>/dev/null || echo "sin respuesta"
+    echo
+    echo "--- últimos movimientos ---"
+    tail -n 10 "$AUDIT_LOG" 2>/dev/null || true
+    ;;
+  *)
+    die "acción no permitida: $ACTION"
+    ;;
+esac

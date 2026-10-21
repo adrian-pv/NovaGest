@@ -1,0 +1,92 @@
+# Pieza reutilizable: entra a la red de Tailscale y ejecuta tramites-ctl en daniel1.
+# La llave del pipeline solo permite tramites-ctl (deploy / rollback / status): no da una terminal.
+name: Comando remoto
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      command:
+        type: string
+        required: true
+      ref:
+        description: Commit del que se toma deploy/adrian/compose.yaml
+        type: string
+        required: true
+      send-compose:
+        type: boolean
+        default: false
+      smoke:
+        description: Probar /actuator/health (y el login, si hay usuario de prueba) por el Nginx privado
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: tramites-ctl ${{ inputs.command }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          sparse-checkout: deploy/adrian
+
+      - name: Unirse a la red de Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Preparar llave SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+
+      - name: Ejecutar en el servidor
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          COMMAND: ${{ inputs.command }}
+          SEND_COMPOSE: ${{ inputs.send-compose }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          ssh_cmd=(ssh -i ~/.ssh/id_deploy -o BatchMode=yes -o StrictHostKeyChecking=yes "deploy@${DEPLOY_HOST}")
+          if [ "$SEND_COMPOSE" = "true" ]; then
+            "${ssh_cmd[@]}" "$COMMAND by=$ACTOR" < deploy/adrian/compose.yaml
+          else
+            "${ssh_cmd[@]}" "$COMMAND by=$ACTOR" < /dev/null
+          fi
+
+      - name: Prueba por el Nginx privado
+        if: inputs.smoke
+        env:
+          BASE_URL: ${{ vars.SMOKE_URL }}
+          SMOKE_USER: ${{ secrets.SMOKE_USER }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "::warning::Sin la variable SMOKE_URL (p. ej. http://100.87.27.107:8083); tramites-ctl ya verificó /actuator/health en loopback."
+            exit 0
+          fi
+          curl -fsS --max-time 10 "$BASE_URL/actuator/health" | grep -q '"status":"UP"'
+          echo "Health por Nginx: UP"
+          if [ -n "$SMOKE_USER" ]; then
+            code=$(jq -n --arg u "$SMOKE_USER" --arg p "$SMOKE_PASSWORD" '{correo:$u,clave:$p}' \
+              | curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Content-Type: application/json' \
+                  --data-binary @- "$BASE_URL/api/auth/login")
+            echo "Login respondió $code"
+            [ "$code" = "200" ]
+          else
+            echo "::warning::Sin SMOKE_USER; se omite la prueba de login."
+          fi
