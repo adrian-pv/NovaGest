@@ -43,47 +43,61 @@ manual ─────► tramites-ctl rollback <entorno>
 
 ## Base de datos (decisión del DBA)
 
-Lo que entregó el DBA para pruebas: PostgreSQL 18 en daniel1, base `tramites_pruebas`, esquema `tramites`, dueño `tramites_owner`, migraciones con `tramites_migrador` y la app con `tramites_app`. Producción: pendiente.
+Lo que entregó el DBA: PostgreSQL 18 en daniel1, esquema `tramites` y tres roles por entorno. El dueño no inicia sesión; Flyway migra con el migrador, que hace `SET ROLE` al dueño, y la app usa su propio usuario.
 
-| Variable (`/opt/tramites/<entorno>/.env`) | Pruebas |
+| | Pruebas | Producción |
+| --- | --- | --- |
+| Base | `tramites_pruebas` | `tramites_produccion` |
+| Dueño (sin LOGIN) | `tramites_owner` | `tramites_prod_owner` |
+| Migrador | `tramites_migrador` | `tramites_prod_migrador` |
+| App | `tramites_app` | `tramites_prod_app` |
+| Red del contenedor | `novagest-staging-net` · `172.30.11.0/24` | `novagest-production-net` · `172.30.12.0/24` |
+
+| Variable | Valor |
 | --- | --- |
-| `DB_HOST` | `host.docker.internal` (= `172.17.0.1`, donde escucha PostgreSQL y lo único que abre el firewall; dentro del contenedor `127.0.0.1` no sirve y `tramites-ctl` lo rechaza) |
-| `DB_PORT` | `5432` |
-| `DB_NAME` | `tramites_pruebas` |
-| `DB_USER` / `DB_PASSWORD` | `tramites_app` (la app) |
-| `FLYWAY_USER` / `FLYWAY_PASSWORD` | `tramites_migrador` (Flyway migra con este; también se usa para el respaldo previo) |
-| `NET_BRIDGE` / `NET_SUBNET` | `br-nova-stg` / `172.30.11.0/24` (producción: `br-nova-prd` / `172.30.12.0/24`) |
+| `.env` `DB_HOST` | `host.docker.internal` (= `172.17.0.1`, donde escucha PostgreSQL y lo único que abre el firewall; dentro del contenedor `127.0.0.1` no sirve y `tramites-ctl` lo rechaza) |
+| `.env` `DB_PORT` | `5432` |
+| `.env` `DB_NAME` | la base del entorno |
+| `.env` `DB_USER` / `DB_PASSWORD` | el usuario de la app |
+| `.env` `FLYWAY_USER` / `FLYWAY_PASSWORD` | el migrador (también se usa para el respaldo previo). Van solo aquí: si se repiten como `SPRING_FLYWAY_USER` / `SPRING_FLYWAY_PASSWORD` en `app.env`, compose las pisa |
+| `.env` `NET_NAME` / `NET_SUBNET` | la red del entorno. Es externa a compose: la crea `setup-server.sh` si falta |
+| `app.env` `SPRING_FLYWAY_SCHEMAS` / `SPRING_FLYWAY_DEFAULT_SCHEMA` | `tramites` |
+| `app.env` `SPRING_FLYWAY_INIT_SQLS` | `SET ROLE <dueño>`: así las tablas quedan a nombre del dueño y le aplican los privilegios por defecto |
 
-Lo que debe dejar el DBA (una vez por base):
+Los valores de `.env` van sin comillas: `tramites-ctl` los lee tal cual para el respaldo previo.
+
+Lo que deja el DBA (una vez por base; ejemplo de pruebas, en producción igual con `tramites_prod_*`):
 
 ```sql
+-- El migrador puede hacer SET ROLE al dueño (y hereda sus permisos para el respaldo)
+GRANT tramites_owner TO tramites_migrador WITH INHERIT TRUE, SET TRUE;
 -- El backend no fija esquema: que ambos usuarios trabajen en "tramites"
 ALTER ROLE tramites_app      IN DATABASE tramites_pruebas SET search_path = tramites;
 ALTER ROLE tramites_migrador IN DATABASE tramites_pruebas SET search_path = tramites;
--- Lo que cree el migrador lo puede usar la app (sin poder cambiar el esquema)
-ALTER DEFAULT PRIVILEGES FOR ROLE tramites_migrador IN SCHEMA tramites
+-- Lo que crea el dueño (Flyway con SET ROLE) lo puede usar la app, sin poder cambiar el esquema
+ALTER DEFAULT PRIVILEGES FOR ROLE tramites_owner IN SCHEMA tramites
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO tramites_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE tramites_migrador IN SCHEMA tramites
+ALTER DEFAULT PRIVILEGES FOR ROLE tramites_owner IN SCHEMA tramites
   GRANT USAGE, SELECT ON SEQUENCES TO tramites_app;
+-- Solo los usuarios del entorno se conectan a su base
+REVOKE CONNECT, TEMPORARY ON DATABASE tramites_pruebas FROM PUBLIC;
 ```
 
-(Si el migrador crea los objetos como `tramites_owner` con `SET ROLE`, el `FOR ROLE` va con ese rol.)
-
-`pg_hba.conf`, solo desde la red del contenedor:
+`pg_hba.conf`, solo desde la red de cada contenedor:
 
 ```
-host  tramites_pruebas  tramites_app,tramites_migrador  172.30.11.0/24  scram-sha-256
+host  tramites_pruebas     tramites_app,tramites_migrador            172.30.11.0/24  scram-sha-256
+host  tramites_produccion  tramites_prod_app,tramites_prod_migrador  172.30.12.0/24  scram-sha-256
 ```
 
 `listen_addresses` incluye `172.17.0.1` (ya está).
 
-Firewall de daniel1 (`/opt/navcontrol/firewall.nft`, servicio `navcontrol-firewall`): su cadena `input` descarta todo lo no listado, incluido el tráfico de los contenedores. Para pruebas ya tiene, antes del `counter drop`:
+Firewall de daniel1 (`/opt/navcontrol/firewall.nft`, servicio `navcontrol-firewall`): su cadena `input` descarta todo lo no listado, incluido el tráfico de los contenedores. Ya tiene, antes del `counter drop`:
 
 ```
 iifname "br-*" ip saddr 172.30.11.0/24 ip daddr 172.17.0.1 tcp dport 5432 counter accept
+iifname "br-*" ip saddr 172.30.12.0/24 ip daddr 172.17.0.1 tcp dport 5432 counter accept
 ```
-
-Para producción falta agregar `172.30.12.0/24` (por ejemplo `ip saddr { 172.30.11.0/24, 172.30.12.0/24 }`), validar con `nft -c -f` y reiniciar `navcontrol-firewall`.
 
 Además:
 

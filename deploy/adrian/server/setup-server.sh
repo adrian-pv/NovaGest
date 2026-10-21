@@ -75,8 +75,8 @@ for env in staging production; do
   dir="$BASE/$env"
   install -d -m 750 -o deploy -g deploy "$dir" "$dir/backups"
   install -m 644 -o deploy -g deploy "$HERE/compose.yaml" "$dir/compose.yaml"
-  if [[ "$env" == staging ]]; then port=$STAGING_PORT; bridge=br-nova-stg; subnet=172.30.11.0/24
-  else port=$PROD_PORT; bridge=br-nova-prd; subnet=172.30.12.0/24; fi
+  if [[ "$env" == staging ]]; then port=$STAGING_PORT; net=novagest-staging-net; subnet=172.30.11.0/24
+  else port=$PROD_PORT; net=novagest-production-net; subnet=172.30.12.0/24; fi
 
   umask 077
   if [[ ! -f "$dir/.env" ]]; then
@@ -96,8 +96,8 @@ DB_PASSWORD=CAMBIAR
 FLYWAY_USER=CAMBIAR
 FLYWAY_PASSWORD=CAMBIAR
 
-# Red del contenedor: el firewall y pg_hba.conf dejan pasar a PostgreSQL solo desde aquí
-NET_BRIDGE=$bridge
+# Red del contenedor (externa a compose): el firewall y pg_hba.conf dejan pasar a PostgreSQL solo desde su subred
+NET_NAME=$net
 NET_SUBNET=$subnet
 EOF
     echo "Creado $dir/.env — faltan los datos de la base (DB_*)."
@@ -110,12 +110,17 @@ EOF
     # Variables nuevas: se agregan solo si faltan (no se pisan valores ya llenados).
     addvar "$dir/.env" FLYWAY_USER CAMBIAR
     addvar "$dir/.env" FLYWAY_PASSWORD CAMBIAR
-    addvar "$dir/.env" NET_BRIDGE "$bridge"
+    sed -i '/^NET_BRIDGE=/d' "$dir/.env"   # ya no se usa: la red es externa
+    addvar "$dir/.env" NET_NAME "$net"
     addvar "$dir/.env" NET_SUBNET "$subnet"
     echo "Actualizado $dir/.env (se conservaron los datos de la base)."
   fi
 
   [[ -f "$dir/app.env" ]] || cp "$HERE/app.env.example" "$dir/app.env"
+  # Flyway (ver DESPLIEGUE.md): esquema tramites y objetos a nombre del dueño que indique el DBA.
+  addvar "$dir/app.env" SPRING_FLYWAY_SCHEMAS tramites
+  addvar "$dir/app.env" SPRING_FLYWAY_DEFAULT_SCHEMA tramites
+  addvar "$dir/app.env" SPRING_FLYWAY_INIT_SQLS "SET ROLE CAMBIAR"
   # Clave JWT propia de cada entorno, generada aquí (>= 32 caracteres). Nunca sale del servidor.
   if grep -qE '^JWT_SECRET=(CAMBIAR)?$' "$dir/app.env"; then
     setvar "$dir/app.env" JWT_SECRET "$(openssl rand -base64 48 | tr -d '\n/+=' | cut -c1-48)"
@@ -123,6 +128,16 @@ EOF
   fi
   chown deploy:deploy "$dir/.env" "$dir/app.env"
   chmod 600 "$dir/.env" "$dir/app.env"
+
+  # Red del entorno: se crea si falta; si ya existe, tiene que tener la subred esperada.
+  if actual="$(docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' "$net" 2>/dev/null)"; then
+    [[ " $actual " == *" $subnet "* ]] \
+      || { echo "La red $net existe con otra subred ($actual); se esperaba $subnet." >&2; exit 1; }
+    echo "Red $net ($subnet): ya existe."
+  else
+    docker network create --driver bridge --subnet "$subnet" "$net" >/dev/null
+    echo "Red $net ($subnet) creada."
+  fi
 done
 
 command -v pg_dump >/dev/null || echo "Aviso: falta pg_dump (sudo apt install postgresql-client). Sin él no se despliega a producción."

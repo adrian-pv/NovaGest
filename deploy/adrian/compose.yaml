@@ -48,15 +48,14 @@ services:
         max-size: "10m"
         max-file: "5"
 
-# Red propia con nombre y rango fijos por entorno, para que el firewall de daniel1 (navcontrol-firewall)
-# y pg_hba.conf permitan SOLO a este contenedor llegar a PostgreSQL (puerto 5432 del host).
+# Red fija por entorno, creada fuera de compose (setup-server.sh): novagest-staging-net 172.30.11.0/24 y
+# novagest-production-net 172.30.12.0/24. El firewall de daniel1 (navcontrol-firewall) y pg_hba.conf solo
+# dejan llegar a PostgreSQL desde esas subredes. Es externa porque Docker no deja crear otra red con el
+# mismo rango, y así "down" tampoco la borra.
 networks:
   default:
-    driver_opts:
-      com.docker.network.bridge.name: ${NET_BRIDGE:?falta NET_BRIDGE en .env}
-    ipam:
-      config:
-        - subnet: ${NET_SUBNET:?falta NET_SUBNET en .env}
+    name: ${NET_NAME:?falta NET_NAME en .env}
+    external: true
 
 volumes:
   comprobantes:
