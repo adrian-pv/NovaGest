@@ -18,6 +18,7 @@ import { useDatos } from '../componentes/useDatos'
 import { useTitulo } from '../componentes/useTitulo'
 import { fechaHora, numero, soloFecha } from '../formato'
 import NoEncontrado from '../paginas/NoEncontrado'
+import SeccionPago from '../pagos/SeccionPago'
 import { useSesion } from '../sesion/contexto'
 import { presentacionDe, resultadoDe } from './acciones'
 import { cargarTramiteConTipo, idDeRuta, puedeEditarDatos } from './cargas'
@@ -210,6 +211,8 @@ function Detalle({ id }: { id: number }) {
         )}
         {Boolean(errorAccion) && <AvisoError error={errorAccion} />}
       </section>
+
+      <SeccionPago tramite={tramite} tipo={tipo} />
 
       <section className="tarjeta seccion" aria-labelledby="titulo-historial">
         <h2 id="titulo-historial">Historial</h2>

@@ -43,8 +43,13 @@ function construirUrl(ruta: string, consulta: Opciones['consulta']): string {
   return texto ? `${url}?${texto}` : url
 }
 
-async function ejecutar<T>(ruta: string, opciones: Opciones): Promise<T> {
-  const cabeceras: Record<string, string> = { Accept: 'application/json' }
+async function ejecutar<T>(
+  ruta: string,
+  opciones: Opciones,
+  leer: (respuesta: Response) => Promise<T>,
+  aceptar = 'application/json',
+): Promise<T> {
+  const cabeceras: Record<string, string> = { Accept: aceptar }
   const token = opciones.sinToken ? null : leerToken()
   if (token) cabeceras.Authorization = `Bearer ${token}`
 
@@ -70,8 +75,23 @@ async function ejecutar<T>(ruta: string, opciones: Opciones): Promise<T> {
   }
 
   if (!respuesta.ok) throw await ErrorApi.desdeRespuesta(respuesta)
-  if (respuesta.status === 204) return undefined as T
-  return (await respuesta.json()) as T
+  return leer(respuesta)
+}
+
+async function leerJson<T>(respuesta: Response): Promise<T> {
+  return respuesta.status === 204 ? (undefined as T) : ((await respuesta.json()) as T)
+}
+
+/** Si una llamada autenticada recibe 401 se renueva la sesión y se reintenta una sola vez. */
+async function conRenovacion<T>(opciones: Opciones, intento: () => Promise<T>): Promise<T> {
+  try {
+    return await intento()
+  } catch (error) {
+    const sinAutorizacion = error instanceof ErrorApi && error.estado === 401
+    if (!sinAutorizacion || opciones.sinToken || !renovador) throw error
+    if (!(await renovador())) throw error
+    return intento()
+  }
 }
 
 /**
@@ -79,13 +99,44 @@ async function ejecutar<T>(ruta: string, opciones: Opciones): Promise<T> {
  * (error HTTP o red caída) en un ErrorApi. Si una llamada autenticada recibe 401 se renueva la sesión y se
  * reintenta una vez. Ni el token ni los cuerpos se escriben en la consola.
  */
-export async function solicitar<T>(ruta: string, opciones: Opciones = {}): Promise<T> {
-  try {
-    return await ejecutar<T>(ruta, opciones)
-  } catch (error) {
-    const sinAutorizacion = error instanceof ErrorApi && error.estado === 401
-    if (!sinAutorizacion || opciones.sinToken || !renovador) throw error
-    if (!(await renovador())) throw error
-    return ejecutar<T>(ruta, opciones)
-  }
+export function solicitar<T>(ruta: string, opciones: Opciones = {}): Promise<T> {
+  return conRenovacion(opciones, () => ejecutar(ruta, opciones, leerJson<T>))
+}
+
+/** Un archivo descargado de la API y el nombre que esta sugirió, ya depurado. */
+export interface ArchivoDescargado {
+  contenido: Blob
+  nombre: string | null
+}
+
+/**
+ * Nombre de archivo de la cabecera Content-Disposition. Solo se aceptan letras, números, punto, guion y guion
+ * bajo: cualquier otra cosa (rutas, espacios, caracteres de control) se descarta para no guardar un archivo con un
+ * nombre manipulado.
+ */
+export function nombreDeDescarga(cabecera: string | null): string | null {
+  const coincidencia = cabecera ? /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cabecera) : null
+  const nombre = coincidencia?.[1]?.trim()
+  return nombre && /^[A-Za-z0-9._-]{1,100}$/.test(nombre) && !nombre.startsWith('.') ? nombre : null
+}
+
+/**
+ * Descarga un archivo que exige sesión (no puede ser un enlace simple porque el token va en una cabecera). Pide
+ * cualquier tipo de contenido: con Accept: application/json la API respondería 406 a un PDF o una imagen.
+ */
+export function solicitarArchivo(
+  ruta: string,
+  opciones: Opciones = {},
+): Promise<ArchivoDescargado> {
+  return conRenovacion(opciones, () =>
+    ejecutar(
+      ruta,
+      opciones,
+      async (respuesta) => ({
+        contenido: await respuesta.blob(),
+        nombre: nombreDeDescarga(respuesta.headers.get('Content-Disposition')),
+      }),
+      '*/*',
+    ),
+  )
 }
