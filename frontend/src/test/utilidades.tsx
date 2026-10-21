@@ -9,8 +9,11 @@ import { guardarRenovacion } from '../sesion/almacen'
 import { ProveedorSesion } from '../sesion/ProveedorSesion'
 import { json, simularApi, tokens, type Llamada, type Manejador } from './api-simulada'
 
-/** Renderiza la aplicación completa en StrictMode, como en desarrollo, empezando en la ruta indicada. */
-export function renderizarApp(ruta = '/') {
+/**
+ * Renderiza la aplicación completa en StrictMode, como en desarrollo, empezando en la ruta indicada. La ruta puede
+ * traer el estado de navegación con el que se llegó (por ejemplo `{ desde: '/bandeja' }`).
+ */
+export function renderizarApp(ruta: string | { pathname: string; state: unknown } = '/') {
   return render(
     <StrictMode>
       <MemoryRouter initialEntries={[ruta]}>

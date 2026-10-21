@@ -3,8 +3,12 @@ import { useSesion } from '../sesion/contexto'
 import { ITEMS_MENU, itemsVisibles, type ItemMenu } from '../sesion/navegacion'
 
 export default function Menu({ items = ITEMS_MENU }: { items?: ItemMenu[] }) {
-  const { estado, tienePermiso } = useSesion()
-  const visibles = itemsVisibles(items, { autenticado: estado === 'autenticado', tienePermiso })
+  const { estado, perfil, tienePermiso } = useSesion()
+  const visibles = itemsVisibles(items, {
+    autenticado: estado === 'autenticado',
+    tienePermiso,
+    alcanceTotal: perfil?.alcanceTotal ?? false,
+  })
   return (
     <nav aria-label="Principal">
       <ul className="menu">
