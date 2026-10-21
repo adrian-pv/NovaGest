@@ -43,19 +43,52 @@ manual ─────► tramites-ctl rollback <entorno>
 
 ## Base de datos (decisión del DBA)
 
-Dentro del contenedor, `127.0.0.1` es el propio contenedor, así que `DB_HOST=127.0.0.1` no llega a PostgreSQL (`tramites-ctl` lo rechaza). Según dónde esté la base:
+Lo que entregó el DBA para pruebas: PostgreSQL 18 en daniel1, base `tramites_pruebas`, esquema `tramites`, dueño `tramites_owner`, migraciones con `tramites_migrador` y la app con `tramites_app`. Producción: pendiente.
 
-| Caso | `DB_HOST` | Lo que debe permitir el DBA |
-| --- | --- | --- |
-| Base en otro servidor | Host o IP del DBA | Conexión desde daniel1 |
-| Base en daniel1 (escucha en `192.168.50.10`) | `192.168.50.10` | Regla en `pg_hba.conf` para la red de Docker (`172.16.0.0/12`) con `scram-sha-256` |
-| Base en daniel1, por la puerta del host | `host.docker.internal` | Lo anterior y además `listen_addresses` con la IP de `docker0` (`172.17.0.1`) |
+| Variable (`/opt/tramites/<entorno>/.env`) | Pruebas |
+| --- | --- |
+| `DB_HOST` | `host.docker.internal` (= `172.17.0.1`, donde escucha PostgreSQL y lo único que abre el firewall; dentro del contenedor `127.0.0.1` no sirve y `tramites-ctl` lo rechaza) |
+| `DB_PORT` | `5432` |
+| `DB_NAME` | `tramites_pruebas` |
+| `DB_USER` / `DB_PASSWORD` | `tramites_app` (la app) |
+| `FLYWAY_USER` / `FLYWAY_PASSWORD` | `tramites_migrador` (Flyway migra con este; también se usa para el respaldo previo) |
+| `NET_BRIDGE` / `NET_SUBNET` | `br-nova-stg` / `172.30.11.0/24` (producción: `br-nova-prd` / `172.30.12.0/24`) |
 
-Además, con el DBA:
+Lo que debe dejar el DBA (una vez por base):
 
-- **Permisos de migración:** Flyway corre al arrancar con el mismo usuario de la app. Ese usuario necesita los permisos para aplicar migraciones que acuerde el DBA.
-- **V9 y V10 son borradores:** no aprobar el despliegue a producción hasta que el DBA las revise. Conviene agregar al DBA como revisor del environment `production`.
-- **Respaldo:** `tramites-ctl` hace `pg_dump` con esos mismos datos antes de cada despliegue a producción. Si falla, no despliega. Requiere `pg_dump` en el host (ya está).
+```sql
+-- El backend no fija esquema: que ambos usuarios trabajen en "tramites"
+ALTER ROLE tramites_app      IN DATABASE tramites_pruebas SET search_path = tramites;
+ALTER ROLE tramites_migrador IN DATABASE tramites_pruebas SET search_path = tramites;
+-- Lo que cree el migrador lo puede usar la app (sin poder cambiar el esquema)
+ALTER DEFAULT PRIVILEGES FOR ROLE tramites_migrador IN SCHEMA tramites
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO tramites_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE tramites_migrador IN SCHEMA tramites
+  GRANT USAGE, SELECT ON SEQUENCES TO tramites_app;
+```
+
+(Si el migrador crea los objetos como `tramites_owner` con `SET ROLE`, el `FOR ROLE` va con ese rol.)
+
+`pg_hba.conf`, solo desde la red del contenedor:
+
+```
+host  tramites_pruebas  tramites_app,tramites_migrador  172.30.11.0/24  scram-sha-256
+```
+
+`listen_addresses` incluye `172.17.0.1` (ya está).
+
+Firewall de daniel1 (`/opt/navcontrol/firewall.nft`, servicio `navcontrol-firewall`): su cadena `input` descarta todo lo no listado, incluido el tráfico de los contenedores. Para pruebas ya tiene, antes del `counter drop`:
+
+```
+iifname "br-*" ip saddr 172.30.11.0/24 ip daddr 172.17.0.1 tcp dport 5432 counter accept
+```
+
+Para producción falta agregar `172.30.12.0/24` (por ejemplo `ip saddr { 172.30.11.0/24, 172.30.12.0/24 }`), validar con `nft -c -f` y reiniciar `navcontrol-firewall`.
+
+Además:
+
+- **V9 y V10 son borradores:** no aprobar producción hasta que el DBA las revise (es revisor del environment `production`).
+- **Respaldo:** `tramites-ctl` hace `pg_dump` con el usuario de migraciones antes de cada despliegue a producción. Si falla, no despliega.
 
 ## Poner en marcha
 
@@ -66,7 +99,7 @@ Además, con el DBA:
    sudo APP_IMAGE=ghcr.io/<owner>/novagest bash deploy/adrian/server/setup-server.sh
    ```
 
-2. **Datos de la base** (los da el DBA), en los dos entornos:
+2. **Datos de la base** (los da el DBA), en los dos entornos (`DB_*` y `FLYWAY_*`):
 
    ```bash
    sudo -u deploy nano /opt/tramites/staging/.env
