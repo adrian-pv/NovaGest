@@ -59,9 +59,32 @@ Todas las respuestas (tambien las de error) llevan `X-Content-Type-Options: nosn
 
 ## Limite de peticiones
 `POST /api/auth/login`, `/api/auth/registro` y `/api/auth/refresh` tienen un limite por direccion IP (complementa el bloqueo por cuenta, que no frena a quien prueba una clave en muchas cuentas). Al pasarse responde `429` con Problem Details y `Retry-After` (segundos); la interfaz lo muestra como "Espera N segundos". Valores por defecto en `application.properties`: login 30 por minuto, registro 10 por hora y refresh 60 por minuto (`app.limite.<operacion>.max` y `.ventana`; `app.limite.habilitado=false` lo apaga y solo lo usan las pruebas). Codigo en `comun/seguridad/`.
-- **La direccion es `request.getRemoteAddr()`.** Nunca se leen `X-Forwarded-For` ni `X-Real-IP` porque cualquiera puede inventarlas y saltarse el limite (hay una prueba que lo vigila). Detras de Nginx hay que configurar el manejo de cabeceras reenviadas de confianza (tarjeta 45): **sin eso todos los usuarios comparten la IP del proxy y el limite los afecta a todos a la vez. No desplegar la 27 detras de un proxy sin la 45.**
+- **La direccion es `request.getRemoteAddr()`.** El codigo nunca lee `X-Forwarded-For` ni `X-Real-IP` por su cuenta, porque cualquiera puede inventarlas y saltarse el limite (hay una prueba que lo vigila). Detras de Nginx el servidor corrige esa direccion solo si el proxy es de confianza: **ver "Despliegue detras de Nginx". Sin esa configuracion todos los usuarios comparten la IP del proxy y el limite los afecta a todos a la vez.**
 - El contador esta en memoria de este proceso y acotado (50 000 direcciones; descarta las menos usadas): con varias instancias cada una cuenta por su lado.
 - Un `429` se responde antes de autenticar: no gasta BCrypt, no toca la base ni suma fallos a ninguna cuenta.
+
+## Despliegue detras de Nginx (IP real, HTTPS y CORS)
+Detras de un proxy la API solo ve la direccion del proxy. Eso rompe cuatro cosas a la vez: la **IP de la bitacora** (auditoria), el **limite de peticiones** (todos los usuarios cuentan como uno), el **HSTS** (nunca se envia) y los **POST del navegador** (403 "Invalid CORS request", porque `Origin` es `https://dominio` y el backend cree que se le llamo por `http://127.0.0.1`). Se arregla con dos variables de entorno del backend y cuatro cabeceras de Nginx. **Sin las dos cosas, no hay despliegue valido.**
+
+**Backend (variables de entorno, perfil `prod`):**
+
+| Variable | Valor | Para que |
+| --- | --- | --- |
+| `FORWARD_HEADERS` | `native` | Acepta `X-Forwarded-For`, `-Proto` y `-Host`, pero solo de los proxies de confianza. Por defecto es `none` (se ignoran). `framework` esta prohibido. |
+| `PROXIES_CONFIANZA` | expresion regular de la direccion **del proxy**, por ejemplo `127\.0\.0\.1` | De quien fiarse. La aplicacion **no arranca** si falta, si no es valida o si acepta direcciones publicas (por ejemplo `.*`). |
+
+**Nginx (en cada `location` que reenvia a la API, incluida `/actuator/health`):**
+```nginx
+proxy_set_header Host              $host;
+proxy_set_header X-Forwarded-For   $remote_addr;   # sobrescribe: no usar $proxy_add_x_forwarded_for si Nginx es el primer proxy
+proxy_set_header X-Forwarded-Proto $scheme;        # sin esto el navegador recibe 403 en cada POST y no sale HSTS
+proxy_set_header X-Forwarded-Host  $host;
+```
+- **Con Docker:** si el contenedor publica `127.0.0.1:8080:8080`, la API no ve `127.0.0.1` sino la puerta de enlace del puente de Docker (algo como `172.17.0.1`). Usa `PROXIES_CONFIANZA=172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}`, o la direccion exacta que muestre el registro. Si no coincide, las cabeceras se ignoran y el sintoma es que la bitacora sigue mostrando la IP del proxy.
+- **Alternativa para CORS:** si por alguna razon el proxy no puede enviar `Host` y `X-Forwarded-Proto`, poner `CORS_ORIGINS=https://tu-dominio` tambien evita el 403.
+- **Como comprobar el despliegue** (los tres pasos, en este orden): (1) registrar una cuenta de prueba por el dominio publico y mirar en la bitacora (`GET /api/bitacora`) que la `ip` es la del cliente y no la del proxy; (2) `curl -sI https://tu-dominio/actuator/health | grep -i strict-transport` debe mostrar `max-age=31536000`; (3) iniciar sesion desde el navegador: no debe haber ningun 403.
+- Una conexion directa al backend (saltandose Nginx) no puede falsificar su IP: solo se confia en las cabeceras de las direcciones de `PROXIES_CONFIANZA`. Por eso el puerto del backend debe publicarse solo en loopback.
+- Al arrancar, el registro dice `Cabeceras reenviadas aceptadas solo desde los proxies de confianza configurados` (o `ignoradas` si no hay proxy configurado): sirve para confirmar que la variable se leyo.
 
 ## Configuracion
 Copiar `.env.example` a `.env` y completar. Los secretos entran solo por variables de entorno; `.env` esta en `.gitignore`.
