@@ -1,10 +1,18 @@
-/** Página de resultados de Spring Data, tal como la devuelve la API. */
-export interface Pagina<T> {
-  content: T[]
+/** Datos de paginación que la API anida en `page`. `number` empieza en 0. */
+export interface DatosDePagina {
+  size: number
+  number: number
   totalElements: number
   totalPages: number
-  number: number
-  size: number
+}
+
+/**
+ * Página de resultados tal como la devuelve la API: los elementos en `content` y la paginación dentro de `page`
+ * (Spring Data en modo VIA_DTO). OJO: no vienen planos; verificado contra el backend real.
+ */
+export interface Pagina<T> {
+  content: T[]
+  page: DatosDePagina
 }
 
 export interface Salud {

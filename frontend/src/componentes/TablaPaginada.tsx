@@ -57,10 +57,11 @@ export default function TablaPaginada<T>({
   if (!pagina) return <Cargando texto="Cargando datos..." />
   if (pagina.content.length === 0) return <p className="vacio">{mensajeVacio}</p>
 
-  const desde = pagina.number * pagina.size + 1
+  const { number: actual, size, totalElements, totalPages } = pagina.page
+  const desde = actual * size + 1
   const hasta = desde + pagina.content.length - 1
-  const hayAnterior = pagina.number > 0
-  const haySiguiente = pagina.number + 1 < pagina.totalPages
+  const hayAnterior = actual > 0
+  const haySiguiente = actual + 1 < totalPages
 
   return (
     <div>
@@ -91,23 +92,23 @@ export default function TablaPaginada<T>({
       </div>
       <nav className="paginacion" aria-label="Paginación">
         <span className="paginacion__resumen">
-          Mostrando {desde}–{hasta} de {pagina.totalElements}
+          Mostrando {desde}–{hasta} de {totalElements}
         </span>
         <div className="paginacion__controles">
           <Boton
             variante="secundario"
             disabled={!hayAnterior || cargando}
-            onClick={() => onCambiarPagina(pagina.number - 1)}
+            onClick={() => onCambiarPagina(actual - 1)}
           >
             Anterior
           </Boton>
           <span>
-            Página {pagina.number + 1} de {pagina.totalPages}
+            Página {actual + 1} de {totalPages}
           </span>
           <Boton
             variante="secundario"
             disabled={!haySiguiente || cargando}
-            onClick={() => onCambiarPagina(pagina.number + 1)}
+            onClick={() => onCambiarPagina(actual + 1)}
           >
             Siguiente
           </Boton>

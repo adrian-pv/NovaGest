@@ -386,6 +386,95 @@ a:hover {
   font-weight: 600;
 }
 
+.campo--casilla label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  min-height: 2.75rem;
+}
+
+.campo--casilla input {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+textarea.campo__entrada {
+  resize: vertical;
+  min-height: 5rem;
+}
+
+.pagina-media {
+  max-width: 40rem;
+}
+
+.encabezado-con-accion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+}
+
+.filtros {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 1.25rem;
+}
+
+.filtros__acciones,
+.acciones-formulario {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.seccion {
+  margin-bottom: 1.25rem;
+}
+
+.datos {
+  margin: 0;
+  display: grid;
+  gap: 0.25rem 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.datos__fila {
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--borde);
+}
+
+.datos dt {
+  color: var(--texto-suave);
+  font-size: 0.875rem;
+}
+
+.datos dd {
+  margin: 0.1rem 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.acciones-tramite {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+}
+
+.acciones-tramite li {
+  max-width: 18rem;
+}
+
+.acciones-tramite .campo__ayuda {
+  margin-top: 0.3rem;
+}
+
 .campo__entrada {
   width: 100%;
   min-height: 2.75rem;

@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ErrorApi } from '../api/errores'
-import type { Pagina } from '../api/tipos'
+import type { DatosDePagina, Pagina } from '../api/tipos'
 import Aviso from './Aviso'
 import AvisoError from './AvisoError'
 import Boton from './Boton'
@@ -164,18 +164,15 @@ describe('TablaPaginada', () => {
     { clave: 'monto', encabezado: 'Monto', celda: (f) => `Q${f.monto}`, derecha: true },
   ]
 
-  function pagina(extra: Partial<Pagina<Fila>> = {}): Pagina<Fila> {
-    return {
-      content: [
-        { id: 1, nombre: 'Boleto de ornato', monto: 25 },
-        { id: 2, nombre: 'Pago de IGSS', monto: 80 },
-      ],
-      totalElements: 45,
-      totalPages: 3,
-      number: 1,
-      size: 20,
-      ...extra,
-    }
+  /** Forma real de la API: los elementos en `content` y la paginación anidada en `page` (verificado en vivo). */
+  function pagina(
+    datos: Partial<DatosDePagina> = {},
+    content: Fila[] = [
+      { id: 1, nombre: 'Boleto de ornato', monto: 25 },
+      { id: 2, nombre: 'Pago de IGSS', monto: 80 },
+    ],
+  ): Pagina<Fila> {
+    return { content, page: { totalElements: 45, totalPages: 3, number: 1, size: 20, ...datos } }
   }
 
   function dibujar(props: Partial<React.ComponentProps<typeof TablaPaginada<Fila>>> = {}) {
@@ -245,7 +242,7 @@ describe('TablaPaginada', () => {
 
   it('con una página vacía muestra el mensaje de vacío', () => {
     dibujar({
-      pagina: pagina({ content: [], totalElements: 0, totalPages: 0, number: 0 }),
+      pagina: pagina({ totalElements: 0, totalPages: 0, number: 0 }, []),
       mensajeVacio: 'Aún no tienes trámites.',
     })
     expect(screen.getByText('Aún no tienes trámites.')).toBeInTheDocument()

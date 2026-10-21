@@ -8,7 +8,7 @@ export interface Llamada {
   cuerpo: unknown
 }
 
-type Manejador = (llamada: Llamada) => Response | Promise<Response>
+export type Manejador = (llamada: Llamada) => Response | Promise<Response>
 
 export function json(cuerpo: unknown, estado = 200): Response {
   return new Response(JSON.stringify(cuerpo), {
@@ -55,7 +55,10 @@ export function simularApi(rutas: Record<string, Manejador>): Llamada[] {
         cuerpo: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body,
       }
       llamadas.push(llamada)
-      const manejador = rutas[`${llamada.metodo} ${llamada.ruta}`]
+      // Se busca la ruta exacta (con su consulta) y, si no está, la ruta sin consulta
+      const manejador =
+        rutas[`${llamada.metodo} ${llamada.ruta}`] ??
+        rutas[`${llamada.metodo} ${llamada.ruta.split('?')[0]}`]
       return manejador ? manejador(llamada) : new Response(null, { status: 404 })
     }),
   )
