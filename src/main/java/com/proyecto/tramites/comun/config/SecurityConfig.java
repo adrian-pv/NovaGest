@@ -33,7 +33,7 @@ import org.springframework.security.web.SecurityFilterChain;
  */
 @Configuration
 @EnableMethodSecurity
-@EnableConfigurationProperties({ JwtProperties.class, LoginProperties.class })
+@EnableConfigurationProperties({ JwtProperties.class, LoginProperties.class, SeguridadProperties.class })
 public class SecurityConfig {
 
 	private static final int MINIMO_BYTES_CLAVE = 32;
@@ -79,9 +79,11 @@ public class SecurityConfig {
 
 	@Bean
 	SecurityFilterChain filterChain(HttpSecurity http, JwtAutenticacionConverter conversor,
-			ProblemaSeguridad problemas) throws Exception {
+			ProblemaSeguridad problemas, SeguridadProperties seguridad) throws Exception {
 		http
 				.csrf(csrf -> csrf.disable())
+				// Tarjeta 26: cabeceras de seguridad en todas las respuestas, tambien en las de error
+				.headers(cabeceras -> CabecerasSeguridad.aplicar(cabeceras, seguridad))
 				// Tarjeta 25: usa el bean corsConfigurationSource (CorsConfig); responde el preflight antes de autenticar
 				.cors(Customizer.withDefaults())
 				.sessionManagement(sesion -> sesion.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
