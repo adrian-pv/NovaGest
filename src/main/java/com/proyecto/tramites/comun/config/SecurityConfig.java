@@ -3,6 +3,8 @@ package com.proyecto.tramites.comun.config;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.proyecto.tramites.auth.service.JwtAutenticacionConverter;
 import com.proyecto.tramites.comun.excepcion.ProblemaSeguridad;
+import com.proyecto.tramites.comun.seguridad.FiltroLimitePeticiones;
+import com.proyecto.tramites.comun.seguridad.LimitadorDePeticiones;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import javax.crypto.SecretKey;
@@ -25,6 +27,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.filter.CorsFilter;
 
 /**
  * Seguridad de la API. Denegar por defecto: solo registro, login, salud y la documentacion son publicos; todo lo demas
@@ -33,7 +36,8 @@ import org.springframework.security.web.SecurityFilterChain;
  */
 @Configuration
 @EnableMethodSecurity
-@EnableConfigurationProperties({ JwtProperties.class, LoginProperties.class, SeguridadProperties.class })
+@EnableConfigurationProperties({ JwtProperties.class, LoginProperties.class, SeguridadProperties.class,
+		LimiteProperties.class })
 public class SecurityConfig {
 
 	private static final int MINIMO_BYTES_CLAVE = 32;
@@ -79,13 +83,17 @@ public class SecurityConfig {
 
 	@Bean
 	SecurityFilterChain filterChain(HttpSecurity http, JwtAutenticacionConverter conversor,
-			ProblemaSeguridad problemas, SeguridadProperties seguridad) throws Exception {
+			ProblemaSeguridad problemas, SeguridadProperties seguridad, LimiteProperties limite,
+			LimitadorDePeticiones limitador) throws Exception {
 		http
 				.csrf(csrf -> csrf.disable())
 				// Tarjeta 26: cabeceras de seguridad en todas las respuestas, tambien en las de error
 				.headers(cabeceras -> CabecerasSeguridad.aplicar(cabeceras, seguridad))
 				// Tarjeta 25: usa el bean corsConfigurationSource (CorsConfig); responde el preflight antes de autenticar
 				.cors(Customizer.withDefaults())
+				// Tarjeta 27: limite de peticiones por IP en login, registro y refresh. Despues de CORS (el navegador
+				// puede leer el 429) y antes de autenticar. No es un bean: asi Spring Boot no lo registra dos veces.
+				.addFilterAfter(new FiltroLimitePeticiones(limitador, limite), CorsFilter.class)
 				.sessionManagement(sesion -> sesion.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.httpBasic(basic -> basic.disable())
 				.formLogin(form -> form.disable())
