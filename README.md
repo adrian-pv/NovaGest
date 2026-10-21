@@ -57,6 +57,12 @@ Para probar endpoints protegidos en Swagger: ejecutar `POST /api/auth/login`, co
 ## Cabeceras de seguridad HTTP
 Todas las respuestas (tambien las de error) llevan `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Permissions-Policy`, `Cache-Control: no-store` y una `Content-Security-Policy` que no deja cargar nada (`default-src 'none'; frame-ancestors 'none'`). Swagger tiene su propia politica, limitada a su mismo origen. `Strict-Transport-Security` (1 ano, sin subdominios ni preload) solo sale en respuestas HTTPS y se ajusta con `app.seguridad.hsts-segundos` (0 = apagado). Detras de un proxy el backend debe ver el esquema original para enviarla (tarjeta 45): el proxy debe mandar `X-Forwarded-Proto`. La politica del frontend (HTML, scripts) es otra y se define donde se sirve (tarjeta 42). Codigo en `comun/config/CabecerasSeguridad.java`.
 
+## Limite de peticiones
+`POST /api/auth/login`, `/api/auth/registro` y `/api/auth/refresh` tienen un limite por direccion IP (complementa el bloqueo por cuenta, que no frena a quien prueba una clave en muchas cuentas). Al pasarse responde `429` con Problem Details y `Retry-After` (segundos); la interfaz lo muestra como "Espera N segundos". Valores por defecto en `application.properties`: login 30 por minuto, registro 10 por hora y refresh 60 por minuto (`app.limite.<operacion>.max` y `.ventana`; `app.limite.habilitado=false` lo apaga y solo lo usan las pruebas). Codigo en `comun/seguridad/`.
+- **La direccion es `request.getRemoteAddr()`.** Nunca se leen `X-Forwarded-For` ni `X-Real-IP` porque cualquiera puede inventarlas y saltarse el limite (hay una prueba que lo vigila). Detras de Nginx hay que configurar el manejo de cabeceras reenviadas de confianza (tarjeta 45): **sin eso todos los usuarios comparten la IP del proxy y el limite los afecta a todos a la vez. No desplegar la 27 detras de un proxy sin la 45.**
+- El contador esta en memoria de este proceso y acotado (50 000 direcciones; descarta las menos usadas): con varias instancias cada una cuenta por su lado.
+- Un `429` se responde antes de autenticar: no gasta BCrypt, no toca la base ni suma fallos a ninguna cuenta.
+
 ## Configuracion
 Copiar `.env.example` a `.env` y completar. Los secretos entran solo por variables de entorno; `.env` esta en `.gitignore`.
 
