@@ -16,6 +16,9 @@
 	<properties>
 		<java.version>21</java.version>
 		<springdoc.version>3.1.0</springdoc.version>
+		<!-- Spring Boot 4.1.1 trae Tomcat 11.0.24 con CVE criticas (CVE-2026-65182, CVE-2026-65905, CVE-2026-68525)
+		     corregidas desde 11.0.25. Quitar cuando el parent traiga una version corregida. -->
+		<tomcat.version>11.0.27</tomcat.version>
 	</properties>
 	<dependencies>
 		<dependency>
