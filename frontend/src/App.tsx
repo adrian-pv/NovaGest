@@ -6,6 +6,10 @@ import NoEncontrado from './paginas/NoEncontrado'
 import Panel from './paginas/Panel'
 import Registro from './paginas/Registro'
 import RutaProtegida from './sesion/RutaProtegida'
+import DetalleTramite from './tramites/DetalleTramite'
+import EditarTramite from './tramites/EditarTramite'
+import ListaTramites from './tramites/ListaTramites'
+import NuevoTramite from './tramites/NuevoTramite'
 
 /**
  * Rutas de la aplicación. Todas se dibujan dentro del marco común (Diseno). Las que exigen sesión van dentro de
@@ -21,6 +25,16 @@ export default function App() {
         <Route path="/registro" element={<Registro />} />
         <Route element={<RutaProtegida />}>
           <Route path="/panel" element={<Panel />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="tramite:leer" />}>
+          <Route path="/tramites" element={<ListaTramites />} />
+          <Route path="/tramites/:id" element={<DetalleTramite />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="tramite:crear" />}>
+          <Route path="/tramites/nuevo" element={<NuevoTramite />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="tramite:editar" />}>
+          <Route path="/tramites/:id/editar" element={<EditarTramite />} />
         </Route>
         <Route path="*" element={<NoEncontrado />} />
       </Route>
