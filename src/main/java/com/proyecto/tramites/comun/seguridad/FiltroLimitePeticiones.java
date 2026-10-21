@@ -17,10 +17,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * Corre en la cadena de seguridad, despues de CORS (para que el navegador pueda leer el 429) y antes de autenticar,
  * asi una peticion rechazada no gasta tiempo en BCrypt ni toca la base de datos ni suma fallos a ninguna cuenta.
  * <p>
- * La direccion es {@code request.getRemoteAddr()}. NO se leen cabeceras como X-Forwarded-For: cualquiera puede
- * inventarlas y saltarse el limite. Detras de un proxy de confianza hay que configurar el manejo de cabeceras
- * reenviadas (tarjeta 45); sin eso, todos los usuarios compartirian la direccion del proxy y el limite los afectaria
- * a todos a la vez.
+ * La direccion es {@code request.getRemoteAddr()}. Este filtro NO lee cabeceras como X-Forwarded-For: cualquiera
+ * puede inventarlas y saltarse el limite. Detras de Nginx, Tomcat ya reemplaza esa direccion por la del cliente real
+ * solo si la peticion llega de un proxy de confianza (FORWARD_HEADERS=native y PROXIES_CONFIANZA, tarjeta 45); sin
+ * esa configuracion, todos los usuarios compartirian la direccion del proxy y el limite los afectaria a todos a la vez.
  */
 public class FiltroLimitePeticiones extends OncePerRequestFilter {
 

@@ -40,8 +40,10 @@ public class BitacoraService {
 	}
 
 	/**
-	 * Direccion IP de quien hizo la peticion, tal como la ve el servidor. Si la API queda detras de un proxy,
-	 * sera la del proxy: no se confia en encabezados como X-Forwarded-For porque cualquiera puede inventarlos.
+	 * Direccion IP de quien hizo la peticion, tal como la ve el servidor. Este codigo nunca lee X-Forwarded-For por su
+	 * cuenta (cualquiera puede inventarlo). Detras de Nginx, Tomcat reemplaza esta direccion por la del cliente real
+	 * solo si la peticion llega desde un proxy de confianza (FORWARD_HEADERS=native y PROXIES_CONFIANZA, tarjeta 45);
+	 * si no esta configurado, queda la direccion del proxy.
 	 */
 	private static String direccionDeLaPeticion() {
 		if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes atributos) {
