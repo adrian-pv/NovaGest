@@ -1,0 +1,1 @@
+org.springframework.boot.EnvironmentPostProcessor=com.proyecto.tramites.comun.config.ConfiguracionDePerfil

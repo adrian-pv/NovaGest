@@ -89,6 +89,13 @@ proxy_set_header X-Forwarded-Host  $host;
 ## Configuracion
 Copiar `.env.example` a `.env` y completar. Los secretos entran solo por variables de entorno; `.env` esta en `.gitignore`.
 
+### Perfil de Spring (obligatorio)
+**No hay perfil por defecto.** Hay que elegir uno con `SPRING_PROFILES_ACTIVE` (variable de entorno o linea en `.env`): `dev` en tu maquina, `prod` en el servidor. Sin perfil la aplicacion **no arranca** y el error dice que hacer; asi, olvidar la variable en un servidor no lo deja con Swagger ni usuarios de demostracion. `docker compose` usa `dev` si no defines nada (es solo para desarrollo).
+- `prod` tampoco arranca si `JWT_SECRET` falta, tiene menos de 32 caracteres, es muy repetitiva o parece una clave de ejemplo (`changeme`, `secret`, `password`...). Genera una con `openssl rand -base64 48`.
+- `prod` no se combina con `dev` ni `test`.
+- La documentacion Swagger solo existe en `dev` y `test`.
+- Si arrancas con `./mvnw spring-boot:run` o desde el IDE, agrega `SPRING_PROFILES_ACTIVE=dev` a tu `.env` (ya viene en `.env.example`).
+
 ## Datos de demostracion (perfil dev)
 Con el perfil `dev` la app carga un usuario de ejemplo por rol y un tercer tipo de tramite (constancia de residencia), desde `src/main/resources/db/dev/R__datos_demo.sql`. En `prod` no existen. Boleto de ornato y Pago de IGSS salen de la migracion V4.
 
