@@ -91,9 +91,13 @@ backup_before_migration() {
   local host port
   host="$(envval DB_HOST)"; port="$(envval DB_PORT)"
   [[ "$host" == host.docker.internal ]] && host=127.0.0.1
-  PGPASSWORD="$(envval DB_PASSWORD)" pg_dump -Fc \
+  # Respalda con el usuario de migraciones (dueño de las tablas); si no hay, con el de la app.
+  local user pass
+  user="$(envval FLYWAY_USER)"; pass="$(envval FLYWAY_PASSWORD)"
+  [[ -n "$user" ]] || { user="$(envval DB_USER)"; pass="$(envval DB_PASSWORD)"; }
+  PGPASSWORD="$pass" pg_dump -Fc \
     -h "${host:-127.0.0.1}" -p "${port:-5432}" \
-    -U "$(envval DB_USER)" -d "$(envval DB_NAME)" >"$file.tmp" \
+    -U "$user" -d "$(envval DB_NAME)" >"$file.tmp" \
     || { rm -f "$file.tmp"; die "pg_dump falló; no se despliega sin respaldo"; }
   mv "$file.tmp" "$file"; chmod 600 "$file"
   # Conserva solo los últimos N respaldos previos a despliegue.

@@ -22,11 +22,14 @@ services:
       DB_NAME: ${DB_NAME:?}
       DB_USER: ${DB_USER:?}
       DB_PASSWORD: ${DB_PASSWORD:?}
+      # Flyway migra con su propio usuario (tramites_migrador); la app corre con DB_USER (tramites_app).
+      SPRING_FLYWAY_USER: ${FLYWAY_USER:?falta FLYWAY_USER en .env}
+      SPRING_FLYWAY_PASSWORD: ${FLYWAY_PASSWORD:?falta FLYWAY_PASSWORD en .env}
       COMPROBANTES_DIR: /data/comprobantes
     # Solo loopback: Nginx (Julio) lo alcanza, internet no. Nunca "8080:8080" (Docker se salta el firewall).
     ports:
       - "127.0.0.1:${APP_PORT:?falta APP_PORT en .env}:8080"
-    # Si la base está en este mismo servidor, DB_HOST=host.docker.internal (ver DESPLIEGUE.md, "Base de datos").
+    # Base en este mismo servidor: DB_HOST=host.docker.internal (172.17.0.1) (ver DESPLIEGUE.md, "Base de datos").
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -44,6 +47,16 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+# Red propia con nombre y rango fijos por entorno, para que el firewall de daniel1 (navcontrol-firewall)
+# y pg_hba.conf permitan SOLO a este contenedor llegar a PostgreSQL (puerto 5432 del host).
+networks:
+  default:
+    driver_opts:
+      com.docker.network.bridge.name: ${NET_BRIDGE:?falta NET_BRIDGE en .env}
+    ipam:
+      config:
+        - subnet: ${NET_SUBNET:?falta NET_SUBNET en .env}
 
 volumes:
   comprobantes:

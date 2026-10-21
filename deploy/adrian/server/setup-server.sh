@@ -67,12 +67,16 @@ setvar() {
   if grep -qE "^$key=" "$file"; then sed -i "s|^$key=.*|$key=$val|" "$file"; else echo "$key=$val" >>"$file"; fi
 }
 
+# Agrega KEY=valor solo si la variable no existe.
+addvar() { grep -qE "^$2=" "$1" || echo "$2=$3" >>"$1"; }
+
 # 4. Un directorio por entorno
 for env in staging production; do
   dir="$BASE/$env"
   install -d -m 750 -o deploy -g deploy "$dir" "$dir/backups"
   install -m 644 -o deploy -g deploy "$HERE/compose.yaml" "$dir/compose.yaml"
-  if [[ "$env" == staging ]]; then port=$STAGING_PORT; else port=$PROD_PORT; fi
+  if [[ "$env" == staging ]]; then port=$STAGING_PORT; bridge=br-nova-stg; subnet=172.30.11.0/24
+  else port=$PROD_PORT; bridge=br-nova-prd; subnet=172.30.12.0/24; fi
 
   umask 077
   if [[ ! -f "$dir/.env" ]]; then
@@ -88,6 +92,13 @@ DB_PORT=5432
 DB_NAME=CAMBIAR
 DB_USER=CAMBIAR
 DB_PASSWORD=CAMBIAR
+# Usuario con el que Flyway aplica las migraciones (distinto del de la app)
+FLYWAY_USER=CAMBIAR
+FLYWAY_PASSWORD=CAMBIAR
+
+# Red del contenedor: el firewall y pg_hba.conf dejan pasar a PostgreSQL solo desde aquí
+NET_BRIDGE=$bridge
+NET_SUBNET=$subnet
 EOF
     echo "Creado $dir/.env — faltan los datos de la base (DB_*)."
   else
@@ -96,6 +107,11 @@ EOF
     setvar "$dir/.env" COMPOSE_PROJECT_NAME "novagest-$env"
     setvar "$dir/.env" APP_PORT "$port"
     [[ -n "$APP_IMAGE" ]] && setvar "$dir/.env" APP_IMAGE "$APP_IMAGE"
+    # Variables nuevas: se agregan solo si faltan (no se pisan valores ya llenados).
+    addvar "$dir/.env" FLYWAY_USER CAMBIAR
+    addvar "$dir/.env" FLYWAY_PASSWORD CAMBIAR
+    addvar "$dir/.env" NET_BRIDGE "$bridge"
+    addvar "$dir/.env" NET_SUBNET "$subnet"
     echo "Actualizado $dir/.env (se conservaron los datos de la base)."
   fi
 
