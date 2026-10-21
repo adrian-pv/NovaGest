@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { ESTADOS, listarTipos, listarTramites, type Tramite } from '../api/tramites'
 import Aviso from '../componentes/Aviso'
 import Boton from '../componentes/Boton'
@@ -13,21 +13,24 @@ import { useSesion } from '../sesion/contexto'
 import { ETIQUETA_ESTADO } from './etiquetas'
 import EstadoInsignia from './EstadoInsignia'
 
-const COLUMNAS: Columna<Tramite>[] = [
-  { clave: 'id', encabezado: 'N.º', celda: (t) => `#${t.id}` },
-  { clave: 'tipo', encabezado: 'Trámite', celda: (t) => t.tipoNombre },
-  { clave: 'estado', encabezado: 'Estado', celda: (t) => <EstadoInsignia estado={t.estado} /> },
-  { clave: 'creado', encabezado: 'Creado', celda: (t) => fechaHora(t.creadoEn) },
-  {
-    clave: 'ver',
-    encabezado: 'Detalle',
-    celda: (t) => (
-      <Link to={`/tramites/${t.id}`} aria-label={`Ver el trámite ${t.id}`}>
-        Ver
-      </Link>
-    ),
-  },
-]
+/** `desde` es la dirección actual (con sus filtros): el detalle la usa para ofrecer volver exactamente aquí. */
+function columnasDe(desde: string): Columna<Tramite>[] {
+  return [
+    { clave: 'id', encabezado: 'N.º', celda: (t) => `#${t.id}` },
+    { clave: 'tipo', encabezado: 'Trámite', celda: (t) => t.tipoNombre },
+    { clave: 'estado', encabezado: 'Estado', celda: (t) => <EstadoInsignia estado={t.estado} /> },
+    { clave: 'creado', encabezado: 'Creado', celda: (t) => fechaHora(t.creadoEn) },
+    {
+      clave: 'ver',
+      encabezado: 'Detalle',
+      celda: (t) => (
+        <Link to={`/tramites/${t.id}`} state={{ desde }} aria-label={`Ver el trámite ${t.id}`}>
+          Ver
+        </Link>
+      ),
+    },
+  ]
+}
 
 /**
  * Listado de trámites con filtros por estado, tipo y fechas. Los filtros y la página viven en la dirección
@@ -37,6 +40,7 @@ const COLUMNAS: Columna<Tramite>[] = [
 export default function ListaTramites() {
   const { perfil, tienePermiso } = useSesion()
   const [params, setParams] = useSearchParams()
+  const ubicacion = useLocation()
   const alcanceTotal = perfil?.alcanceTotal ?? false
   useTitulo(alcanceTotal ? 'Trámites' : 'Mis trámites')
 
@@ -170,7 +174,7 @@ export default function ListaTramites() {
       )}
       <TablaPaginada<Tramite>
         titulo="Lista de trámites"
-        columnas={COLUMNAS}
+        columnas={columnasDe(ubicacion.pathname + ubicacion.search)}
         pagina={tramites.datos}
         cargando={tramites.cargando}
         error={tramites.error}

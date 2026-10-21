@@ -5,6 +5,8 @@ export interface ItemMenu {
   permiso?: string
   /** Solo se muestra con sesión iniciada, sin importar el permiso. */
   requiereSesion?: boolean
+  /** Solo se muestra a quien ve los registros de todas las personas (personal), además del permiso. */
+  alcanceTotal?: boolean
 }
 
 /**
@@ -17,17 +19,21 @@ export interface ItemMenu {
 export const ITEMS_MENU: ItemMenu[] = [
   { ruta: '/', etiqueta: 'Inicio' },
   { ruta: '/panel', etiqueta: 'Mi panel', requiereSesion: true },
+  { ruta: '/bandeja', etiqueta: 'Bandeja', permiso: 'tramite:leer', alcanceTotal: true },
   { ruta: '/tramites', etiqueta: 'Trámites', permiso: 'tramite:leer' },
 ]
 
 interface Contexto {
   autenticado: boolean
   tienePermiso: (permiso: string) => boolean
+  /** Si sus roles ven los registros de todas las personas. Sin dato se toma como falso. */
+  alcanceTotal?: boolean
 }
 
 /** Los elementos del menú que la persona puede usar ahora. */
 export function itemsVisibles(items: ItemMenu[], contexto: Contexto): ItemMenu[] {
   return items.filter((item) => {
+    if (item.alcanceTotal && !(contexto.autenticado && contexto.alcanceTotal)) return false
     if (item.permiso) return contexto.autenticado && contexto.tienePermiso(item.permiso)
     if (item.requiereSesion) return contexto.autenticado
     return true

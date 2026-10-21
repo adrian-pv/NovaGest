@@ -78,6 +78,10 @@ export interface FiltroTramites {
   desde?: string
   hasta?: string
   page?: number
+  /** Elementos por página; sin él la API usa 20 (máximo 100). */
+  size?: number
+  /** Orden, por ejemplo "creadoEn,asc". Campos permitidos: id, creadoEn y estado. */
+  sort?: string
 }
 
 export function listarTramites(
@@ -91,6 +95,8 @@ export function listarTramites(
       desde: filtro.desde,
       hasta: filtro.hasta,
       page: filtro.page ?? 0,
+      size: filtro.size,
+      sort: filtro.sort,
     },
     senal,
   })

@@ -632,6 +632,60 @@ textarea.campo__entrada {
   margin: 0.4rem 0;
 }
 
+.colas {
+  list-style: none;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.colas__enlace {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  background: var(--superficie);
+  color: var(--texto);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.colas__enlace:hover {
+  background: var(--superficie-2);
+  color: var(--texto);
+}
+
+.colas__enlace--activa {
+  background: var(--primario);
+  border-color: var(--primario);
+  color: var(--sobre-primario);
+}
+
+.colas__enlace--activa:hover {
+  background: var(--primario-hover);
+  color: var(--sobre-primario);
+}
+
+.colas__cuenta {
+  min-width: 1.6rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--superficie-2);
+  color: var(--texto);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.colas__enlace--activa .colas__cuenta {
+  background: rgba(255, 255, 255, 0.25);
+  color: inherit;
+}
+
 .pago__cabecera {
   display: flex;
   flex-wrap: wrap;
