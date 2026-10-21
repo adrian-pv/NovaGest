@@ -68,11 +68,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Construir con el Dockerfile del backend y publicar
+      # Primero se construye SIN publicar y se escanea; solo si pasa el escaneo se sube a GHCR.
+      # Así nunca existe en el registro una imagen que no pasó trivy (producción solo usa imágenes publicadas).
+      - name: Construir con el Dockerfile del backend (sin publicar)
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          load: true
+          push: false
           tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
           labels: |
             org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
@@ -86,6 +89,10 @@ jobs:
           severity: CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+      - name: Publicar en GHCR (solo si pasó el escaneo)
+        env:
+          REF: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+        run: docker push "$REF"
 
   deploy-staging:
     name: Desplegar en pruebas
@@ -135,6 +142,13 @@ jobs:
             exit 1
           fi
           echo "Se desplegará $REF"
+      - name: Volver a escanear antes de producción
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
 
   deploy-production:
     name: Desplegar en producción
@@ -149,7 +163,7 @@ jobs:
 
   # ---------- manual: rollback / status ----------
   manual:
-    name: ${{ inputs.action }} en ${{ inputs.environment }}
+    name: Manual (status / rollback)
     if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/remote.yml
     with:

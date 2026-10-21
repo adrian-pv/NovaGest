@@ -23,7 +23,7 @@ jobs:
       - name: gitleaks
         run: |
           docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.18.4 \
-            detect --source /repo --redact --verbose
+            detect --source /repo --redact --verbose --log-opts="HEAD"
 
   dependencias:
     name: Dependencias vulnerables
