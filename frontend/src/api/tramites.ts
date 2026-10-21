@@ -144,3 +144,52 @@ export function listarTipos(senal?: AbortSignal): Promise<Pagina<TipoTramite>> {
 export function obtenerTipo(id: number, senal?: AbortSignal): Promise<TipoTramite> {
   return solicitar<TipoTramite>(`/api/tipos-tramite/${id}`, { senal })
 }
+
+/** Un campo tal como lo manda el editor de tipos. `orden` se omite: la API usa la posición en la lista. */
+export interface CampoSolicitud {
+  clave: string
+  etiqueta: string
+  tipoDato: TipoDato
+  obligatorio: boolean
+  patron: string | null
+  minimo: number | null
+}
+
+/**
+ * Cuerpo para crear o reemplazar un tipo. Sin `campos` (undefined) los del tipo no cambian; con una lista, la lista
+ * reemplaza a los anteriores. `activo` conviene mandarlo siempre: la API toma "activo" cuando falta.
+ */
+export interface SolicitudTipo {
+  nombre: string
+  descripcion: string | null
+  monto: number
+  activo: boolean
+  campos?: CampoSolicitud[]
+}
+
+/**
+ * Tipos para quien los administra (tipo_tramite:editar): incluye los inactivos. `activo` filtra por estado y sin él
+ * llegan todos. Es una lista paginada de 20 en 20, a diferencia de `listarTipos`, que trae el catálogo completo.
+ */
+export function listarTiposAdmin(
+  filtro: { activo?: boolean; page?: number },
+  senal?: AbortSignal,
+): Promise<Pagina<TipoTramite>> {
+  return solicitar<Pagina<TipoTramite>>('/api/tipos-tramite', {
+    consulta: { activo: filtro.activo, page: filtro.page ?? 0, sort: 'nombre,asc' },
+    senal,
+  })
+}
+
+export function crearTipo(solicitud: SolicitudTipo): Promise<TipoTramite> {
+  return solicitar<TipoTramite>('/api/tipos-tramite', { metodo: 'POST', cuerpo: solicitud })
+}
+
+export function actualizarTipo(id: number, solicitud: SolicitudTipo): Promise<TipoTramite> {
+  return solicitar<TipoTramite>(`/api/tipos-tramite/${id}`, { metodo: 'PUT', cuerpo: solicitud })
+}
+
+/** Eliminación lógica: el tipo desaparece de las listas pero queda en la base. */
+export function eliminarTipo(id: number): Promise<void> {
+  return solicitar<void>(`/api/tipos-tramite/${id}`, { metodo: 'DELETE' })
+}
