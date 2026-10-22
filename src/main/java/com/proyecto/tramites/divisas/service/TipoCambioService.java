@@ -9,6 +9,7 @@ import com.proyecto.tramites.divisas.repository.TipoCambioRepository;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -38,6 +39,8 @@ public class TipoCambioService {
 
 	private static final Logger LOG = LoggerFactory.getLogger(TipoCambioService.class);
 	private static final int DIAS_HACIA_ATRAS = 10;
+	/** NUMERIC(18,6) deja 12 digitos antes del punto. */
+	private static final int MAX_ENTEROS = 12;
 
 	private final TipoCambioRepository tipos;
 	private final BanguatClient banguat;
@@ -77,8 +80,13 @@ public class TipoCambioService {
 			LocalDate desde = fecha.minusDays(DIAS_HACIA_ATRAS);
 			List<CotizacionMoneda> filas = moneda.esDolar() ? banguat.tipoCambioRango(desde, fecha)
 					: banguat.tipoCambioRangoMoneda(desde, fecha, codigo);
-			guardar(filas);
-			Optional<CotizacionMoneda> ultima = filas.stream()
+			List<CotizacionMoneda> validas = filas.stream().filter(this::esValida).toList();
+			if (validas.size() < filas.size()) {
+				LOG.warn("El Banguat envio {} filas no validas de la moneda {}: se ignoran", filas.size() - validas.size(),
+						codigo);
+			}
+			guardar(validas);
+			Optional<CotizacionMoneda> ultima = validas.stream()
 					.filter(f -> f.moneda() == codigo && !f.fecha().isAfter(fecha))
 					.max(Comparator.comparing(CotizacionMoneda::fecha));
 			if (ultima.isPresent()) {
@@ -95,13 +103,25 @@ public class TipoCambioService {
 						"El tipo de cambio no esta disponible en este momento. Intenta mas tarde."));
 	}
 
+	/**
+	 * Solo se guarda lo que la base aceptaria y tiene sentido: moneda del catalogo, fecha que no sea futura y un valor
+	 * positivo que quepa en NUMERIC(18,6) (12 enteros). Una fila rota (valor cero, moneda desconocida...) se descarta; sin
+	 * este filtro llegaria a la base, violaria un CHECK y haria fallar la consulta de todas las demas filas.
+	 */
+	private boolean esValida(CotizacionMoneda fila) {
+		if (fila == null || fila.fecha() == null || fila.venta() == null || fila.fecha().isAfter(hoy())) {
+			return false;
+		}
+		boolean monedaConocida = Arrays.stream(Moneda.values()).anyMatch(m -> m.codigoBanguat() == fila.moneda());
+		return monedaConocida && fila.venta().signum() > 0
+				&& fila.venta().precision() - fila.venta().scale() <= MAX_ENTEROS;
+	}
+
+	/** Inserta de forma idempotente (ver {@link TipoCambioRepository#insertarSiNoExiste}): nunca choca con otra escritura. */
 	private void guardar(List<CotizacionMoneda> filas) {
 		for (CotizacionMoneda fila : filas) {
-			if (!tipos.existsByFechaAndMoneda(fila.fecha(), fila.moneda())) {
-				tipos.save(new TipoCambio(fila.fecha(), fila.moneda(), fila.venta(), FUENTE));
-			}
+			tipos.insertarSiNoExiste(fila.fecha(), fila.moneda(), fila.venta(), FUENTE);
 		}
-		tipos.flush();
 	}
 
 	private static Cotizacion deGuardado(TipoCambio tipo, boolean estimado) {

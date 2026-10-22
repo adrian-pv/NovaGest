@@ -109,10 +109,16 @@ public class PagoService {
 	/**
 	 * Valida o rechaza un pago pendiente. Quien lo registro no puede resolverlo (403). Al validar, el tramite
 	 * pasa a Finalizado por la maquina de estados: si esa transicion falla, no se guarda nada.
+	 * <p>
+	 * El pago se bloquea al leerlo: si otra persona lo resuelve al mismo tiempo, la segunda decision espera, ve el pago
+	 * ya resuelto y recibe 409 en lugar de pisar a la primera. El orden de bloqueos es siempre pago y luego tramite
+	 * (la transicion bloquea el tramite); nada bloquea primero el tramite y despues el pago, asi no hay interbloqueo.
 	 */
 	@Transactional
 	public PagoResponse resolver(Actor actor, Long id, ValidacionPagoRequest solicitud) {
-		Pago pago = buscarVisible(actor, id);
+		Pago pago = pagos.bloquearPorId(id)
+				.filter(p -> actor.alcanceTotal() || p.getCiudadanoId().equals(actor.id()))
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "El pago no existe"));
 		if (pago.getEstado() != EstadoPago.PENDIENTE) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "El pago ya fue resuelto: " + pago.getEstado());
 		}
