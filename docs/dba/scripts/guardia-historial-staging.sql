@@ -7,7 +7,10 @@ SELECT current_database()='tramites_pruebas' AS base_correcta \gset
 \else
   \quit 3
 \endif
-SELECT NOT has_table_privilege('tramites_app','tramites.flyway_schema_history',
+-- NOINHERIT puede ocultar privilegios disponibles mediante SET ROLE.
+SELECT NOT pg_has_role('tramites_app','tramites_owner','USAGE')
+  AND NOT pg_has_role('tramites_app','tramites_owner','SET')
+  AND NOT has_table_privilege('tramites_app','tramites.flyway_schema_history',
   'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') AS app_sin_acceso,
   has_table_privilege('tramites_migrador','tramites.flyway_schema_history',
   'SELECT') AND has_table_privilege('tramites_migrador','tramites.flyway_schema_history','INSERT')

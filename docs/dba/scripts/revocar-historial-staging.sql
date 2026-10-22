@@ -9,7 +9,8 @@ SELECT current_database()='tramites_pruebas' AS base_correcta \gset
 SELECT EXISTS(SELECT FROM pg_class c WHERE c.oid=to_regclass('tramites.flyway_schema_history')
   AND pg_get_userbyid(c.relowner)='tramites_owner')
   AND pg_has_role('tramites_migrador','tramites_owner','SET')
-  AND NOT pg_has_role('tramites_app','tramites_owner','USAGE') AS modelo_esperado \gset
+  AND NOT pg_has_role('tramites_app','tramites_owner','USAGE')
+  AND NOT pg_has_role('tramites_app','tramites_owner','SET') AS modelo_esperado \gset
 \if :modelo_esperado
 \else
   \echo 'FALLO: propietario o pertenencia de roles cambio; no se ejecuta REVOKE'

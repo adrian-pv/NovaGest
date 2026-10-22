@@ -15,37 +15,9 @@ Se buscó `flyway_schema_history` en src/main: no hay consultas del código de a
 3. Con el acceso de administración acordado, respaldar la tabla/historial usando pg_dump antes de modificar permisos; verificar código de salida y archivo de respaldo protegido. No poner contraseñas en argumentos ni publicar el respaldo.
 4. Volver a consultar propietario y privilegios efectivos para confirmar que no han cambiado desde la auditoría. Si difieren, revisar el plan antes de seguir.
 
-## SQL propuesto para una sesión psql de administración
+## SQL canónico revisable
 
-Solo se ejecutaría conectado a `tramites_pruebas`. El script de auditoría actual es READ ONLY y **no debe reutilizarse para aplicar este cambio**.
-
-```sql
-\set ON_ERROR_STOP on
-SELECT current_database() = 'tramites_pruebas' AS base_correcta \gset
-\if :base_correcta
-\else
-  \quit 3
-\endif
-BEGIN;
-SET LOCAL lock_timeout = '3s';
-SET LOCAL statement_timeout = '30s';
-REVOKE ALL PRIVILEGES ON TABLE tramites.flyway_schema_history FROM tramites_app;
-SELECT NOT has_table_privilege('tramites_app','tramites.flyway_schema_history','SELECT')
-   AND NOT has_table_privilege('tramites_app','tramites.flyway_schema_history','INSERT')
-   AND NOT has_table_privilege('tramites_app','tramites.flyway_schema_history','UPDATE')
-   AND NOT has_table_privilege('tramites_app','tramites.flyway_schema_history','DELETE')
-   AND NOT has_table_privilege('tramites_app','tramites.flyway_schema_history','TRUNCATE')
-   AND NOT has_table_privilege('tramites_app','tramites.flyway_schema_history','REFERENCES')
-   AND NOT has_table_privilege('tramites_app','tramites.flyway_schema_history','TRIGGER')
-   AND NOT has_table_privilege('tramites_app','tramites.flyway_schema_history','MAINTAIN')
-   AS permisos_correctos \gset
-\if :permisos_correctos
-  COMMIT;
-\else
-  ROLLBACK;
-  \quit 4
-\endif
-```
+El único SQL de aplicación está en [revocar-historial-staging.sql](scripts/revocar-historial-staging.sql); se invoca mediante el helper que respalda primero. No mantener una segunda variante abreviada para ejecución manual. El SQL fija tramites_pruebas, valida owner y capacidad SET del migrador, rechaza USAGE y SET del owner por parte de app, evita cambios si ya está restringido y usa BEGIN, timeouts y REVOKE ALL sobre esa única tabla. Solo COMMIT si desaparecen todos los privilegios efectivos; ante fallo ROLLBACK o cierre de conexión. Una pertenencia NOINHERIT con SET permitido tampoco es aceptable. No reutilizar el SQL de auditoría READ ONLY para aplicar cambios.
 
 Esto conserva todos los permisos del migrador/owner y no cambia otras tablas ni secuencias. No modifica filas, checksums, contraseñas ni propietarios. Si los permisos se heredan por otra vía y la comprobación falla, la transacción se revierte; no se amplía el cambio automáticamente.
 

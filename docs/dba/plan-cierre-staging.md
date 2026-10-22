@@ -2,6 +2,8 @@
 
 **Preparación, no ejecución. Producción no está autorizada.** Este plan sustituye instrucciones antiguas de rotación y reinicio incluidas en registros históricos.
 
+Entrega: [expediente de 16 secciones](expediente-entrega-staging.md), [informe antes/después de 19 criterios](verificacion-final-staging.md#informe-antesdespues), [revalidación GitHub y acciones para Ernesto](evidencia-github.md). Health sin sudo a las 01:04:46 UTC del 22/10: UP. Deploy reconsultado: disabled_manually, cero en cada estado activo. PostgreSQL conserva como evidencia la auditoría terminada; no se repitió una auditoría privilegiada.
+
 ## Estado real consultado el 21/10/2026
 
 La comprobación SSH sin sudo de las 18:30 America/Mexico_City obtuvo health UP. Deploy continúa disabled_manually; los ocho runs recientes consultados estaban completed y una consulta específica de todos los estados activos debe repetirse justo antes de la ventana. #84 abierto/borrador, #85 abierto/listo para revisión y #88 abierto/borrador. #85 y #88 tenían sus cuatro checks verdes; #88 conserva las 625 pruebas ya verificadas. No se repitieron migraciones ni la auditoría privilegiada terminada.
@@ -23,7 +25,7 @@ Evidencia DBA existente: 67 objetos bajo owner, nueve migraciones exitosas, chec
 | Gobierno de repositorio | Ernesto configura exigencia de PR, code owners y checks; el ruleset solo impide borrado/force-push. CODEOWNERS solo no impide fusionar. |
 | Retirada de propuesta obsoleta | Cerrar #84 sin fusionar, solo cuando el usuario lo autorice. #85 lo revisa Ernesto; no fusionamos. |
 
-Dictamen definitivo preparado: **CAMBIOS REQUERIDOS ANTES DEL CIERRE**. V9/V10 son estructuralmente compatibles con observaciones, con propietarios y checksums correctos. Ese estado no equivale a APROBADO ni autoriza producción. Tras aplicar y verificar corrección/rotación, el usuario revisará un dictamen favorable antes de publicarlo.
+Dictamen para revisión: **CAMBIOS REQUERIDOS ANTES DEL CIERRE**. V9/V10 son estructuralmente compatibles con observaciones, con propietarios y checksums correctos. Ese estado no equivale a APROBADO ni autoriza producción. Tras aplicar y verificar corrección/rotación, el usuario revisará un dictamen favorable antes de publicarlo.
 
 ## Secuencia y autorizaciones
 

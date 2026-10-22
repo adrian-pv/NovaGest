@@ -60,6 +60,11 @@ for rol in "${roles[@]}"; do
 done
 flock -u 9
 exec 9>&-
-printf '%s\n' 'DBA_LISTO: claves de roles indicados cambiadas y conexiones verificadas.'
-printf '%s\n' 'ENTREGA: Adrian actualiza .env y recrea la misma imagen. Ningun script nuestro reinicia.'
+if [[ $1 == rotar ]]; then
+  printf '%s\n' 'DBA_LISTO: ambas claves cambiadas y ambas conexiones verificadas.'
+  printf '%s\n' 'ENTREGA: Adrian actualiza .env y recrea la misma imagen. Ningun script nuestro reinicia.'
+else
+  printf '%s\n' 'RECUPERACION_ROL_LISTA: solo se verifico el rol indicado; NO entregar aun a Adrian.'
+  printf '%s\n' 'Antes del relevo, confirmar por separado autenticacion de AMBOS roles con sus claves vigentes y documentar la decision conjunta.'
+fi
 printf '%s\n' 'Deploy sigue pausado. No ejecutar otra fase DBA mientras Adrian trabaja.'

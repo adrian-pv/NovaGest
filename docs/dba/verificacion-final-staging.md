@@ -1,5 +1,35 @@
 # Protocolo final — preparado, aún no ejecutado
 
+<a id="informe-antesdespues"></a>
+
+## Informe antes/después
+
+Línea base: auditoría 22/10/2026 00:07:12 UTC y health 01:04:46 UTC. La columna posterior se completará con fecha/archivo/hash tras la ventana; **no se ejecutó todavía**. La auditoría acredita una instantánea.
+
+| # | Criterio | Antes realmente acreditado | Después / aceptación |
+| --- | --- | --- | --- |
+| 1 | PostgreSQL accesible | Auditoría ejecutada; API actual UP. | Pendiente: conexión nueva correcta. |
+| 2 | Base correcta | tramites_pruebas. | Pendiente: ambas autenticaciones en esa base. |
+| 3 | App con clave nueva | Sin rotación realizada. | Pendiente: psql -W y pool nuevo. |
+| 4 | Migrador con clave nueva | Sin rotación realizada. | Pendiente: psql -W independiente. |
+| 5 | TLS nuevo | Diez sesiones app TLS 1.3 en auditoría. | Pendiente: ambos roles y pool nuevo; registrar versión. |
+| 6 | Propietarios | 67 objetos y una función bajo owner. | Pendiente: comparar inventario y propiedad. |
+| 7 | Historial inalterado | Nueve filas conservadas en reporte. | Pendiente: captura íntegra antes/después idéntica. |
+| 8 | Migraciones exitosas | V1–V6, V8–V10, nueve success=t. | Pendiente: guardia confirma conjunto exacto. |
+| 9 | Checksums | V9 -956879505, V10 -130265834. | Pendiente: mismos valores. |
+| 10 | Mínimo privilegio | App con SELECT/INSERT/UPDATE/DELETE en historial. | Pendiente: sin privilegios ni SET ROLE owner; EXPLAIN denegados; migrador conservado. |
+| 11 | Negocio accesible | CRUD de app, secuencias USAGE/SELECT; pago=0. | Pendiente: snapshots y lecturas como app. |
+| 12 | API | UP a las 01:04:46 UTC. | Pendiente: UP tras recreación. |
+| 13 | Errores de autenticación | Logs privilegiados no revisados en esta preparación. | Pendiente: cero errores nuevos tras ADRIAN_LISTO; separar intervalo de relevo. |
+| 14 | Misma imagen | ID real de inicio aún por capturar en ventana. | Pendiente: igualdad exacta de .Image. |
+| 15 | Misma red | Compose actual según evidencia/confirmación. | Pendiente: mismos NetworkID/configuración, captura de Adrián. |
+| 16 | Volúmenes / datos | Sin DML/eliminación por nosotros; snapshot inicial pendiente. | Pendiente: mismos montajes e historial/conteos; conteos no prueban igualdad de cada fila. |
+| 17 | SET ROLE | Confirmado por Adrián/usuario; owner e installed_by coherentes. | Pendiente: configuración única efectiva; migrador capaz y app sin asumir owner. |
+| 18 | NavControl | Sin acciones sobre ese proyecto; sin prueba operativa independiente. | Pendiente: conformidad de su responsable antes/después, sin modificarlo. |
+| 19 | Producción | Sin comandos/cambios en este cierre; no auditada. | Pendiente: confirmar alcance sin afirmar auditoría de producción. |
+
+Inicio/fin, autorizaciones y participantes: pendientes. Paquete: SHA256SUMS vigente. Resultado final: **PENDIENTE**, sin aprobación definitiva.
+
 Solo después de la corrección autorizada de ACL, ambas claves cambiadas, y ADRIAN_LISTO tras una recreación. No repetir ahora la auditoría ya completada como sustituto de esta comprobación posterior.
 
 ## Ejecución autorizada

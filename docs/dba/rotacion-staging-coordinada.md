@@ -77,6 +77,8 @@ cp -p -- .env "$rot_snapshot/env-antes"    # Adrian: privado; nunca subirlo
 # Adrian actualiza FLYWAY_PASSWORD y DB_PASSWORD en su editor/herramienta privada.
 # No mostrar los valores en pantalla compartida ni usar echo/sed con claves en argumentos.
 # No avanzar hasta haber guardado ambas variables; conservar las otras lineas.
+read -r -p 'Tras editar en privado ambas variables, escribe AMBAS VARIABLES ACTUALIZADAS: ' rot_ack </dev/tty
+[[ $rot_ack == 'AMBAS VARIABLES ACTUALIZADAS' ]]
 rot_compose=(docker compose --project-directory /opt/tramites/staging -f /opt/tramites/staging/compose.yaml --env-file /opt/tramites/staging/.env)
 [[ $(docker image inspect -f '{{.Id}}' "$rot_ref") == "$rot_image" ]]
 APP_TAG="$rot_tag" "${rot_compose[@]}" config --format json | python3 -c 'import json,sys; c=json.load(sys.stdin); assert c["services"]["app"]["image"]==sys.argv[1]' "$rot_ref"
@@ -95,6 +97,7 @@ El JSON de `config` solo transita por memoria hacia el filtro: no imprimirlo, us
 
 - Fallo antes de cambiar un rol: no continuar; PostgreSQL permanece con su estado previo para ese rol.
 - Fallo entre roles o autenticación no confirmada: mantener Deploy pausado; Adrián no edita/recrea. Tratar el rol como potencialmente cambiado y volver a fijarlo con una clave NUEVA mediante `rotar-migrador` o `rotar-app` en la misma copia verificada. Estos modos son solo recuperación, con autorización; la ejecución normal siempre rota ambos en orden.
+- La recuperación de un solo rol emite RECUPERACION_ROL_LISTA, nunca DBA_LISTO. Antes de cualquier entrega tras una recuperación, verificar nuevamente los dos roles con sus claves vigentes y registrar la decisión conjunta; recuperar uno no acredita el otro.
 - No recuperar la contraseña expuesta. No restaurar hashes antiguos ni repetir automáticamente la rotación. Reanudar solo cuando ambos roles autentiquen y el custodio pueda introducir los valores vigentes en la sesión de Adrián.
 - Si .env quedó incorrecto: Adrián corrige exclusivamente las dos variables con los valores vigentes. Su respaldo sirve para otras líneas, no para volver a las claves comprometidas.
 - Si la recreación no queda sana: preservar imagen/topología/volúmenes; revisar localmente credenciales y configuración efectiva. DBA puede ayudar con conexiones de solo lectura. No cambiar imagen ni datos como recuperación automática. Una segunda recreación o cambio de clave requiere decisión explícita del equipo.
