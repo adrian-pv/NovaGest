@@ -1,0 +1,6 @@
+# Las migraciones requieren la revision del responsable DBA.
+# El repositorio debe exigir aprobacion de code owners en main y develop.
+/src/main/resources/db/migration/ @hgfdiuy
+
+# La asignacion de responsables queda bajo revision del propietario del repositorio.
+/.github/CODEOWNERS @ernestosantizo2003
