@@ -28,6 +28,11 @@
 	</scm>
 	<properties>
 		<java.version>21</java.version>
+		<!-- Mismas correcciones que el pom principal: Spring Boot 4.1.1 trae Tomcat 11.0.24 (CVE criticas) y
+		     Jackson 3.1.5 / 2.21.5 (CVE altas). Quitar cuando el parent traiga versiones corregidas. -->
+		<tomcat.version>11.0.27</tomcat.version>
+		<jackson-bom.version>3.1.7</jackson-bom.version>
+		<jackson-2-bom.version>2.21.7</jackson-2-bom.version>
 	</properties>
 	<dependencies>
 		<dependency>

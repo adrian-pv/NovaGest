@@ -1,6 +1,7 @@
 package com.proyecto.spike;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import jakarta.servlet.DispatcherType;
 import java.nio.charset.StandardCharsets;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -76,6 +77,10 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(a -> a
                 .requestMatchers("/api/auth/login").permitAll()
+                // Tomcat reenvia los errores (400, 415...) a /error y Security tambien autoriza ese reenvio: sin
+                // esta regla, un login mal formado respondia 401 como una clave incorrecta. Solo el reenvio interno;
+                // pedir /error directamente sigue exigiendo token
+                .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                 .anyRequest().authenticated())
             .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(converter)));
         return http.build();

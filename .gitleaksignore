@@ -1,2 +1,4 @@
 # Falso positivo: clave de prueba del ejemplo JWT (solo test, no se usa en ningun entorno)
 fe3bc84eb1223a30f82ebf7059be52a9758e636b:docs/ejemplo-jwt/src/test/java/com/proyecto/spike/SeguridadTests.java:generic-api-key:15
+# La misma clave de prueba, copiada en 7628624 y quitada en el commit siguiente (ServidorRealTests genera una al azar)
+76286249b7d7c766a2c641a7a696bb425bba2b83:docs/ejemplo-jwt/src/test/java/com/proyecto/spike/ServidorRealTests.java:generic-api-key:22
