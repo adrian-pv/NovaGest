@@ -1,0 +1,6 @@
+# usuario:rol[:nombre completo]
+# Roles: dev = grupo de desarrollo, sin sudo; deploy = grupos de despliegue y sudo.
+# Nombres ficticios: copiar este archivo, editarlo y guardarlo FUERA del repositorio.
+ng-dev1:dev:Persona Desarrolladora Uno
+ng-dev2:dev:Persona Desarrolladora Dos
+ng-deploy1:deploy:Persona de Despliegue

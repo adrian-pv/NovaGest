@@ -1,0 +1,19 @@
+# Plantilla futura HTTP para ACME de UN entorno (variable DOMINIO). No instalar
+# hasta tener el dominio, el DNS y el puerto 80 entrante hacia este servidor.
+server {
+    listen 80;
+    server_name ${DOMINIO};
+
+    server_tokens off;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type text/plain;
+    }
+
+    # Hasta emitir el certificado responde 404; despues cambiar por
+    # return 301 https://$host$request_uri;
+    location / {
+        return 404;
+    }
+}

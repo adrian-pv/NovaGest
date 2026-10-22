@@ -1,0 +1,65 @@
+# Plantilla futura HTTPS para UN entorno; requiere dominio real y certificado Certbot existente.
+# Comparte 443 con otros sitios por server_name (SNI): no usar default_server ni
+# cambiar el listen de los sitios existentes. Variables: DOMINIO, BACKEND_PORT,
+# FRONTEND_ROOT, NG_ENTORNO (renderizar con envsubst limitando la lista).
+#
+# El backend emite HSTS y las cabeceras de seguridad de la API al recibir
+# X-Forwarded-Proto: https; aqui solo se ponen para el frontend.
+server {
+    listen 443 ssl;
+    server_name ${DOMINIO};
+
+    server_tokens off;
+    ssl_certificate /etc/letsencrypt/live/${DOMINIO}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMINIO}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    client_max_body_size 7m;
+
+    access_log /var/log/nginx/novagest-${NG_ENTORNO}-publico.access.log;
+    error_log /var/log/nginx/novagest-${NG_ENTORNO}-publico.error.log warn;
+
+    location = /api/auth/login {
+        limit_req zone=novagest_login burst=5 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:${BACKEND_PORT};
+        include /etc/nginx/snippets/novagest-proxy-headers.conf;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:${BACKEND_PORT};
+        include /etc/nginx/snippets/novagest-proxy-headers.conf;
+    }
+
+    location = /actuator/health {
+        proxy_pass http://127.0.0.1:${BACKEND_PORT};
+        include /etc/nginx/snippets/novagest-proxy-headers.conf;
+    }
+
+    location /actuator/ {
+        return 404;
+    }
+
+    location / {
+        root ${FRONTEND_ROOT};
+        try_files $uri $uri/ /index.html;
+
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    }
+
+    location = /index.html {
+        root ${FRONTEND_ROOT};
+        add_header Cache-Control "no-cache" always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    }
+}
