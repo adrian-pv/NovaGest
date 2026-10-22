@@ -9,22 +9,30 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 /**
  * Peticiones contra Tomcat de verdad. MockMvc no lo arranca: no prueba el Tomcat que fija el pom ni el reenvio de los
  * errores a /error, donde un login mal formado acababa en 401.
  */
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT,
-    properties = "app.jwt.secret=una-clave-de-prueba-de-al-menos-32-caracteres")
+@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class ServidorRealTests {
 
     private static final HttpClient HTTP = HttpClient.newHttpClient();
 
     @LocalServerPort int puerto;
+
+    /** Una clave distinta en cada ejecucion: ninguna queda escrita en el codigo (gitleaks las marca). */
+    @DynamicPropertySource
+    static void claveJwt(DynamicPropertyRegistry propiedades) {
+        propiedades.add("app.jwt.secret", () -> UUID.randomUUID() + "-" + UUID.randomUUID());
+    }
 
     private HttpRequest.Builder a(String ruta) {
         return HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + puerto + ruta));
