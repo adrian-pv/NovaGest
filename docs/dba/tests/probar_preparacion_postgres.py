@@ -69,6 +69,46 @@ def no_change_on_failure(setup):
     after = sql("SELECT relacl::text FROM pg_class WHERE oid='tramites.flyway_schema_history'::regclass")
     assert before == after, 'Un fallo debe preservar/revertir la ACL'
 
+def posix(path):
+    s = Path(path).resolve().as_posix()
+    return f'/{s[0].lower()}{s[2:]}' if os.name == 'nt' and s[1:2] == ':' else s
+
+def acl_historial():
+    return sql("SELECT relacl::text FROM pg_class WHERE oid='tramites.flyway_schema_history'::regclass")
+
+def corregir(caso, esperado, setup=None, gancho=None):
+    """corregir-historial-staging.sh de punta a punta con su texto real. Solo se sustituye el entorno del
+    servidor (root, runuser, flock, socket y rutas); gancho = SQL justo despues del REVOKE (actividad
+    concurrente o un cambio indebido). Comprueba que el OK final solo aparece cuando todo pasa."""
+    reset()
+    if setup:
+        sql(setup)
+    texto = (SCRIPTS/'corregir-historial-staging.sh').read_text('utf-8')
+    trabajo = Path(tempfile.mkdtemp(prefix='corregir-', dir=WORK))
+    (trabajo/'lock').write_text('')
+    for viejo, nuevo in [
+            ("[[ $EUID -eq 0 ]] || { echo 'ERROR: requiere sudo autorizado' >&2; exit 1; }\n", ''),
+            ('/opt/tramites/staging/.lock', posix(trabajo/'lock')),
+            ('mktemp -d /root/novagest-acl.XXXXXXXX', f'mktemp -d {posix(trabajo)}/novagest-acl.XXXXXXXX'),
+            ('runuser -u postgres -- ', ''),
+            ('-h /var/run/postgresql -p 5432 -U postgres', f'-h 127.0.0.1 -p {PORT} -U novagest_test_admin'),
+            ('dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"', f"dir='{posix(SCRIPTS)}'"),
+            ('"${PSQL[@]}" <"$dir/revocar-historial-staging.sql"\n',
+             '"${PSQL[@]}" <"$dir/revocar-historial-staging.sql"\n${GANCHO:+"${PSQL[@]}" -c "$GANCHO"}\n'),
+            ('set -euo pipefail\n', 'set -euo pipefail\nflock() { return 0; }\n')]:
+        assert texto.count(viejo) >= 1, viejo
+        texto = texto.replace(viejo, nuevo)
+    (trabajo/'corregir.sh').write_bytes(texto.encode())
+    env = dict(ENV, PATH=str(BIN) + os.pathsep + os.environ['PATH'])
+    if gancho:
+        env['GANCHO'] = gancho
+    p = run([os.environ['BASH_TEST_BIN'], posix(trabajo/'corregir.sh'), '--aplicar'], check=False, env=env)
+    salida = p.stdout.decode('utf-8', 'replace')
+    ok = 'OK: permisos restringidos' in salida
+    assert p.returncode == esperado and ok == (esperado == 0), (caso, p.returncode, salida, p.stderr)
+    RESULTS.append({'caso': f'corregir: {caso}', 'esperado': esperado, 'observado': p.returncode, 'ok_impreso': ok})
+    return salida, p.stderr.decode('utf-8', 'replace')
+
 with socket.socket() as sock:
     sock.bind(('127.0.0.1', 0))
     PORT = sock.getsockname()[1]
@@ -84,7 +124,10 @@ try:
         f.write(f"\nlisten_addresses='127.0.0.1'\nport={PORT}\nssl=on\n"
                 f"ssl_cert_file='{(WORK/'test.crt').as_posix()}'\n"
                 f"ssl_key_file='{(WORK/'test.key').as_posix()}'\n")
-    run([exe('pg_ctl'), '-D', DATA, '-l', WORK/'postgres.log', '-w', 'start'])
+    # Sin capturar la salida: en Windows postgres hereda las tuberias de pg_ctl y run() esperaria su cierre.
+    subprocess.run([str(exe('pg_ctl')), '-D', str(DATA), '-l', str(WORK/'postgres.log'), '-w', 'start'],
+                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                   env=ENV, creationflags=FLAGS, timeout=60, check=True)
     started = True
     # Prueba de identidad antes de crear objetos: imposibilita apuntar a un cluster ajeno.
     actual = sql('SHOW data_directory;', 'postgres')
@@ -204,6 +247,43 @@ INSERT INTO flyway_schema_history(installed_rank,version,description,type,script
         p=run([exe('pg_restore'),*args],data,check=False)
         assert p.returncode==expected
         RESULTS.append({'caso':'pg_restore '+str(args),'esperado':expected,'observado':p.returncode})
+
+    # estado-negocio: un alta de la app solo cambia filas 'conteo'; un cambio de permisos cambia filas 'permiso'.
+    def sin_conteos(lineas):
+        return [l for l in lineas if not l.startswith('conteo|')]
+    reset()
+    script('revocar-historial-staging.sql')
+    antes = script('estado-negocio-staging.sql').stdout.decode().splitlines()
+    assert any(l.startswith('conteo|') for l in antes) and any(l.startswith('permiso|') for l in antes)
+    assert any(l.startswith('secuencia|') for l in antes)
+    sql('INSERT INTO tramites.usuario VALUES (1);')
+    despues = script('estado-negocio-staging.sql').stdout.decode().splitlines()
+    assert despues != antes and sin_conteos(despues) == sin_conteos(antes)
+    sql('REVOKE SELECT ON tramites.pago FROM tramites_app;')
+    assert sin_conteos(script('estado-negocio-staging.sql').stdout.decode().splitlines()) != sin_conteos(antes)
+    sql('DELETE FROM tramites.usuario;')
+    RESULTS.append({'caso': 'estado-negocio separa conteos de permisos', 'observado': 0})
+
+    # corregir-historial-staging.sh completo: el OK final solo si el REVOKE y todas las comprobaciones pasan.
+    salida, _ = corregir('normal', 0)
+    assert 'conteos de negocio iguales' in salida and acl_historial() == '{tramites_owner=arwdDxtm/tramites_owner}'
+    salida, _ = corregir('alta concurrente de la app', 0, gancho='INSERT INTO tramites.usuario VALUES (77)')
+    assert 'conteos de negocio cambiaron' in salida
+    sql('DELETE FROM tramites.usuario;')
+    # DELETE: la guardia no lo comprueba (si lee pago), asi que lo detecta la comparacion de permisos.
+    _, err = corregir('permiso de negocio cambiado', 1, gancho='REVOKE DELETE ON tramites.pago FROM tramites_app')
+    assert 'propietarios o permisos de negocio difieren' in err
+    for caso, setup in [('PUBLIC conserva SELECT', 'GRANT SELECT ON tramites.flyway_schema_history TO PUBLIC'),
+                        ('app puede SET ROLE al dueno', 'GRANT tramites_owner TO tramites_app')]:
+        reset(); sql(setup); acl = acl_historial()
+        corregir(caso, 3, setup=setup)
+        assert acl_historial() == acl, 'El REVOKE fallido debe quedar revertido'
+    for caso, gancho in [('privilegio reaparece', 'GRANT INSERT ON tramites.flyway_schema_history TO tramites_app'),
+                         ('privilegio de columna', 'GRANT UPDATE (success) ON tramites.flyway_schema_history TO tramites_app'),
+                         ('checksum V9 alterado', "UPDATE tramites.flyway_schema_history SET checksum=7 WHERE version='9'")]:
+        corregir(caso, 3, gancho=gancho)
+    reset()
+    script('revocar-historial-staging.sql')
 
     report={'version':version,'loopback':True,'cluster_nuevo':True,'casos':RESULTS,
             'manifest_sha256':hashlib.sha256((SCRIPTS/'SHA256SUMS').read_bytes()).hexdigest(),

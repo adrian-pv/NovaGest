@@ -1,4 +1,6 @@
 -- SOLO LECTURA. Evidencia agregada de negocio para comparar antes/despues.
+-- Cada fila empieza por su tipo: 'permiso' y 'secuencia' (propietarios y privilegios: deben ser identicos
+-- antes y despues) y 'conteo' (filas por tabla: solo evidencia, cambian con actividad legitima de la app).
 \set ON_ERROR_STOP on
 \pset tuples_only on
 \pset format unaligned
@@ -9,18 +11,18 @@ SELECT current_database()='tramites_pruebas' AS base_correcta \gset
 \else
   DO $f$BEGIN RAISE EXCEPTION 'FALLO: solo se permite tramites_pruebas'; END$f$;
 \endif
-SELECT format('SELECT %L AS tabla, count(*) AS filas FROM %I.%I;',c.relname,n.nspname,c.relname)
+SELECT format('SELECT %L AS tipo, %L AS tabla, count(*) AS filas FROM %I.%I;','conteo',c.relname,n.nspname,c.relname)
 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
 WHERE n.nspname='tramites' AND c.relkind IN ('r','p') AND c.relname<>'flyway_schema_history'
 ORDER BY c.relname \gexec
-SELECT c.relname,r.rolname,
+SELECT 'permiso',c.relname,r.rolname,
   has_table_privilege(r.oid,c.oid,'SELECT'),has_table_privilege(r.oid,c.oid,'INSERT'),
   has_table_privilege(r.oid,c.oid,'UPDATE'),has_table_privilege(r.oid,c.oid,'DELETE'),
   has_table_privilege(r.oid,c.oid,'TRUNCATE'),pg_get_userbyid(c.relowner)
 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN pg_roles r
 WHERE n.nspname='tramites' AND c.relkind IN ('r','p') AND c.relname<>'flyway_schema_history'
 AND r.rolname IN ('tramites_app','tramites_migrador') ORDER BY c.relname,r.rolname;
-SELECT c.relname,r.rolname,has_sequence_privilege(r.oid,c.oid,'USAGE'),
+SELECT 'secuencia',c.relname,r.rolname,has_sequence_privilege(r.oid,c.oid,'USAGE'),
   has_sequence_privilege(r.oid,c.oid,'SELECT'),has_sequence_privilege(r.oid,c.oid,'UPDATE'),
   pg_get_userbyid(c.relowner)
 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN pg_roles r

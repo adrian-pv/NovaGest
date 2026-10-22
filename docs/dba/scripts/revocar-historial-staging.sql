@@ -1,6 +1,8 @@
 -- CAMBIO PREPARADO, NO EJECUTADO. Requiere respaldo y autorizacion explicita.
 -- Unico cambio persistente: ACL de tramites.flyway_schema_history para tramites_app.
 \set ON_ERROR_STOP on
+-- psql ignora el numero de \quit (sale con 0): cada fallo termina con RAISE EXCEPTION, que con
+-- ON_ERROR_STOP hace salir a psql con 3 y revierte la transaccion abierta.
 SELECT current_database()='tramites_pruebas' AS base_correcta \gset
 \if :base_correcta
 \else

@@ -35,16 +35,27 @@ PSQL=("${ROOTPG[@]}" psql -X -q -v ON_ERROR_STOP=1 -P pager=off -h /var/run/post
 )
 # Unico cambio PostgreSQL del script: el REVOKE en ese archivo.
 "${PSQL[@]}" <"$dir/revocar-historial-staging.sql"
+# tee: el motivo de un FALLO se ve en pantalla; pipefail conserva el codigo de salida de psql (RAISE -> 3).
 "${PSQL[@]}" <"$dir/guardia-historial-staging.sql" 2>&1 | tee "$backup/guardia-despues.txt"
 "${PSQL[@]}" -Atc "SELECT installed_rank,version,script,checksum,success,installed_by,installed_on,execution_time FROM tramites.flyway_schema_history ORDER BY installed_rank" >"$backup/historial-despues.txt"
 "${PSQL[@]}" <"$dir/estado-negocio-staging.sql" >"$backup/negocio-despues.txt"
 cmp -s "$backup/historial-antes.txt" "$backup/historial-despues.txt" || { echo 'ERROR: historial difiere; investigar' >&2; exit 1; }
-cmp -s "$backup/negocio-antes.txt" "$backup/negocio-despues.txt" || { echo 'ERROR: conteos o permisos de negocio difieren; investigar actividad concurrente' >&2; exit 1; }
+# Propietarios y privilegios de negocio deben ser identicos. Los conteos solo se registran: la app sigue
+# atendiendo y un alta legitima no debe detener el procedimiento (el REVOKE no toca datos de negocio).
+grep -v '^conteo|' "$backup/negocio-antes.txt" >"$backup/permisos-antes.txt" || true
+grep -v '^conteo|' "$backup/negocio-despues.txt" >"$backup/permisos-despues.txt" || true
+[[ -s $backup/permisos-antes.txt ]] || { echo 'ERROR: evidencia de permisos vacia; investigar' >&2; exit 1; }
+cmp -s "$backup/permisos-antes.txt" "$backup/permisos-despues.txt" || { echo 'ERROR: propietarios o permisos de negocio difieren; investigar' >&2; exit 1; }
+if cmp -s "$backup/negocio-antes.txt" "$backup/negocio-despues.txt"; then
+  conteos='conteos de negocio iguales'
+else
+  conteos='conteos de negocio cambiaron durante la ventana (actividad de la app; ver negocio-antes/despues)'
+fi
 (
   cd -- "$backup"
   sha256sum -c SHA256SUMS-antes
-  sha256sum guardia-despues.txt historial-despues.txt negocio-despues.txt >SHA256SUMS-despues
+  sha256sum guardia-despues.txt historial-despues.txt negocio-despues.txt permisos-antes.txt permisos-despues.txt >SHA256SUMS-despues
   sha256sum -c SHA256SUMS-despues
 )
-echo "OK: permisos restringidos; historial, conteos y permisos de negocio conservados. Evidencia privada: $backup"
+echo "OK: permisos restringidos; historial y permisos de negocio conservados; $conteos. Evidencia privada: $backup"
 echo 'No se modificaron credenciales, archivos de entorno, redes, contenedores ni produccion.'
