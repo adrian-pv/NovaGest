@@ -47,6 +47,8 @@ Auditoría ejecutada por el usuario a las 00:07:12 UTC del 22/10. Se preserva el
 
 Paquete de ACL preparado: candado cooperativo, carpeta privada root, pg_dump custom solo del historial, ACL y snapshots de negocio, pg_restore --list, REVOKE transaccional, guardia y comparación. **No existe todavía el respaldo de esta operación**. Leer el índice de un dump no equivale a ensayar su restauración. Antes de COMMIT, fallo revierte; después, conservar evidencia y detener sin GRANT ni restauración automática. Restaurar datos o ampliar permisos requiere decisión independiente. No subir dumps ni archivos de entorno a Git.
 
+La preparación ahora añade lectura completa sin conexión mediante pg_restore --file=/dev/null y hashes verificados del dump/evidencias antes de permitir REVOKE. Se sellan también las salidas posteriores. Ni lectura offline ni hashes sustituyen una restauración ensayada; esa validación real sigue sin ejecutarse.
+
 ## 9. Rotación coordinada
 
 [Procedimiento exacto](rotacion-staging-coordinada.md), pendiente de autorización y horario confirmado: migrador → app, pruebas nuevas TLS de ambos, DBA_LISTO, Adrián actualiza FLYWAY_PASSWORD y DB_PASSWORD en staging/.env, una recreación, ADRIAN_LISTO y verificación. Custodio introduce las mismas claves directamente en ambas terminales durante la sesión conjunta, sin chat/GitHub/capturas ni pantalla compartida. El script DBA no edita entornos ni llama Docker. Recuperación avanza a otra clave nueva; el modo de un rol no entrega automáticamente a Adrián. Puede haber interrupción temporal de nuevas conexiones.
@@ -76,6 +78,8 @@ Diff completo de #88 revisado: documentación, scripts de preparación y CODEOWN
 | Producción independiente | Revisión de carreras financieras, respaldo/restauración ensayada, secretos y TLS de ese entorno, autorización de migraciones/despliegue y aceptación funcional. No deducir aprobación por staging UP. |
 
 ## 14. Responsables y entrega
+
+Asignación actualizada: Codex es el ejecutor principal DBA/staging; Claude es auditor independiente en su carpeta separada. Codex continúa tareas seguras y registra/incorpora hallazgos críticos antes de ejecutar cambios privilegiados, siempre con autorización explícita. La ausencia de comentarios en GitHub no equivale a una aprobación del auditor. Se preservan las responsabilidades de Adrián, Ernesto y del usuario descritas a continuación.
 
 Rodney/hgfdiuy: evidencia, propuesta ACL, cambio PostgreSQL autorizado y auditoría posterior. Adrián: pausa operativa, imagen/topología, edición privada de ambas variables y recreación única autorizada. Ernesto: revisión independiente #85/#88 y configuración de protecciones. Equipo de aplicación: PR de concurrencia y contrato de proveedor. Usuario: autorizaciones pendientes y revisión del dictamen antes de publicarlo. Mensajes directos preparados localmente, no enviados. Cierre #84 sin merge pendiente de permiso; #85/#88 no fusionados.
 

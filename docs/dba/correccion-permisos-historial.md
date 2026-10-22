@@ -14,6 +14,7 @@ Se buscó `flyway_schema_history` en src/main: no hay consultas del código de a
 2. Conservar [la evidencia de ACL previa](resultado-auditoria-staging.md) y una copia local de los GRANT de la tabla. La ACL observada fue `{tramites_owner=arwdDxtm/tramites_owner,tramites_app=arwd/tramites_owner}`.
 3. Con el acceso de administración acordado, respaldar la tabla/historial usando pg_dump antes de modificar permisos; verificar código de salida y archivo de respaldo protegido. No poner contraseñas en argumentos ni publicar el respaldo.
 4. Volver a consultar propietario y privilegios efectivos para confirmar que no han cambiado desde la auditoría. Si difieren, revisar el plan antes de seguir.
+5. Codex es el ejecutor DBA; Claude audita de forma independiente en su propia carpeta. Consultar los hallazgos recibidos por el usuario o en #87/#88, registrar la versión/manifest auditados y resolver los críticos antes de ejecutar. Si el informe no está disponible, marcar revisión independiente pendiente; no interpretar ausencia de comentarios como dictamen favorable. Este requisito no detiene la preparación segura. No modificar la carpeta de Claude.
 
 ## SQL canónico revisable
 
@@ -39,6 +40,8 @@ bash corregir-historial-staging.sh --aplicar
 ```
 
 El script toma el candado existente de staging; crea una carpeta privada de root con umask 077; guarda ACL previa, pg_dump custom de **solo la tabla de historial**, índice legible con pg_restore --list, las nueve filas y una captura agregada de conteos/privilegios de negocio y secuencias. Un índice de respaldo legible no equivale a una restauración ensayada: no se crea otra base para probarlo sin autorización.
+
+Antes del REVOKE también recorre el archivo completo mediante pg_restore --file=/dev/null, sin --dbname ni conexión de restauración. Se descarta el SQL generado y se conservan errores en un archivo privado; cualquier error detiene el script. Se crean y verifican hashes del dump y evidencias previas; al terminar se revalidan y se sellan las evidencias posteriores. Esto comprueba lectura y trazabilidad del respaldo, **no una restauración real ni la integridad semántica completa de una base restaurada**. [Modos de pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html). Este camino aún no se ejecutó: el respaldo real se generará únicamente tras autorización.
 
 Solo después de ese respaldo ejecuta [revocar-historial-staging.sql](scripts/revocar-historial-staging.sql). Si falla antes de COMMIT, la conexión termina y PostgreSQL revierte la transacción. Tras COMMIT no restaura privilegios ni datos automáticamente: cualquier falla posterior deja el estado para investigar, con el respaldo conservado y Deploy pausado.
 

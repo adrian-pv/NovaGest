@@ -29,6 +29,12 @@ Dictamen para revisión: **CAMBIOS REQUERIDOS ANTES DEL CIERRE**. V9/V10 son est
 
 ## Secuencia y autorizaciones
 
+### Ejecución DBA y auditoría independiente
+
+Codex es responsable principal de la ejecución DBA/staging y mantiene esta rama. Claude revisa en una carpeta separada que Codex no modifica. La preparación de solo lectura y sus commits continúan sin esperar al auditor. Antes de cada operación privilegiada: comprobar autorización explícita del usuario; consultar los hallazgos entregados por Claude a través del usuario o #87/#88; registrar commit/manifest revisado, clasificar y resolver los críticos; revalidar Deploy y condiciones de la ventana. Si faltan hallazgos o informe, dejar constancia de revisión pendiente sin inventar conformidad. No ejecutar por la sola asignación de responsabilidad.
+
+Revalidación de 22/10/2026, aproximadamente 01:25 UTC: health UP sin sudo; Deploy disabled_manually y cero queued/in_progress/waiting/requested/pending. #88 seguía en borrador con cuatro checks verdes del fd7fa42. Al consultar #87/#88 no había comentarios/revisiones formales de auditoría independiente; esto no describe el trabajo privado de Claude. Los estados se vuelven a consultar antes de ejecutar.
+
 1. Preparación terminada: revisión, scripts sin secretos, respaldos/procedimientos especificados, mensajes de coordinación en borrador.
 2. **Primera operación a autorizar:** sudo para respaldar historial y evidencias de negocio, aplicar únicamente REVOKE ALL a tramites_app sobre tramites.flyway_schema_history y verificar. No incluye contraseñas ni reinicio. [Procedimiento](correccion-permisos-historial.md).
 3. Autorizar por separado una ventana conjunta de 30 minutos para migrador→app. El usuario eligió entrada directa en ambas terminales; Adrián debe confirmar disponibilidad y aceptación del relevo. [Pasos de rotación y recreación única](rotacion-staging-coordinada.md).
