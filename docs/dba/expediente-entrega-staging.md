@@ -2,6 +2,8 @@
 
 Estado al 22/10/2026 01:04–01:10 UTC (21/10, America/Mexico_City). **CAMBIOS REQUERIDOS ANTES DEL CIERRE**. Es una entrega de revisión y preparación; las operaciones pendientes no se presentan como ejecutadas. Índice operativo: [plan único](plan-cierre-staging.md).
 
+Actualización posterior: [revisión de #91](revision-V9-V10.md) integrado en develop (9c6373e), con 634 pruebas CI correctas. No acredita despliegue en staging ni modifica las condiciones de autorización, respaldo/REVOKE, rotación o auditoría final.
+
 ## 1. Resumen ejecutivo
 
 La auditoría real de staging concluyó con READ ONLY y ROLLBACK. V9/V10 pasan estructura, propietarios y checksums. La nueva consulta SSH sin sudo obtuvo health UP a las 01:04:46 UTC. Falta restringir el historial Flyway, rotar dos credenciales y verificar después. El issue #87 sigue abierto, sin aprobación definitiva. No se ejecutaron cambios PostgreSQL, reinicios ni despliegues durante esta preparación.
@@ -72,7 +74,7 @@ Diff completo de #88 revisado: documentación, scripts de preparación y CODEOWN
 | Clasificación | Pendiente |
 | --- | --- |
 | Bloquea cerrar staging | ACL del historial, credenciales expuestas y evidencia final tras la corrección/recreación. |
-| Aplicación | Concurrencia de pagos/cotizaciones y validación del proveedor: asignar PR y pruebas; no resolver con ALTER OWNER. |
+| Aplicación | Carreras originales corregidas en develop por #91; validación del proveedor parcial, con bordes/respuestas pendientes según revisión. Despliegue en staging no acreditado. |
 | V11 opcional bajo decisión | Reglas SQL de resolución/rechazo y contratos adicionales de comprobantes/monedas; sin datos inválidos actuales demostrados. |
 | Gobierno | PR, aprobación, code owners y checks aún no obligatorios; configurar antes de confiar en revisión automática DBA. |
 | Producción independiente | Revisión de carreras financieras, respaldo/restauración ensayada, secretos y TLS de ese entorno, autorización de migraciones/despliegue y aceptación funcional. No deducir aprobación por staging UP. |
@@ -81,7 +83,7 @@ Diff completo de #88 revisado: documentación, scripts de preparación y CODEOWN
 
 Asignación actualizada: Codex es el ejecutor principal DBA/staging; Claude es auditor independiente en su carpeta separada. Codex continúa tareas seguras y registra/incorpora hallazgos críticos antes de ejecutar cambios privilegiados, siempre con autorización explícita. La ausencia de comentarios en GitHub no equivale a una aprobación del auditor. Se preservan las responsabilidades de Adrián, Ernesto y del usuario descritas a continuación.
 
-Rodney/hgfdiuy: evidencia, propuesta ACL, cambio PostgreSQL autorizado y auditoría posterior. Adrián: pausa operativa, imagen/topología, edición privada de ambas variables y recreación única autorizada. Ernesto: revisión independiente #85/#88 y configuración de protecciones. Equipo de aplicación: PR de concurrencia y contrato de proveedor. Usuario: autorizaciones pendientes y revisión del dictamen antes de publicarlo. Mensajes directos preparados localmente, no enviados. Cierre #84 sin merge pendiente de permiso; #85/#88 no fusionados.
+Rodney/hgfdiuy: evidencia, propuesta ACL, cambio PostgreSQL autorizado y auditoría posterior. Adrián: pausa operativa, imagen/topología, edición privada de ambas variables y recreación única autorizada. Ernesto: revisión independiente #85/#88 y configuración de protecciones. Equipo de aplicación: seguimiento residual de #91 y contrato del proveedor, según revisión enlazada. Usuario: autorizaciones pendientes y revisión del dictamen antes de publicarlo. Mensajes directos preparados localmente, no enviados. Cierre #84 sin merge pendiente de permiso; #85/#88 no fusionados.
 
 ## 15. Recomendaciones para producción
 

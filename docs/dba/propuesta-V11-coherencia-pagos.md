@@ -28,11 +28,11 @@ Se mantiene ck_pago_segregacion y los dos índices únicos parciales existentes.
 - MIME permitido (PDF/PNG/JPEG), SHA-256 hexadecimal de 64 caracteres y tamaño entre 1 y 5242880: añadir CHECK solo si se quiere fijar en SQL la política actual de ComprobanteAlmacen. Cambiar esa política exigiría actualizar también el contrato de base.
 - La identidad de ciudadano debe corresponder al titular del trámite. PagoService lo deriva correctamente; si se exige esa coherencia en SQL, diseñar clave compuesta o mecanismo equivalente y revisar nulabilidad/mutabilidad del titular. No añadir un CHECK que consulte otra tabla. No exigir creado_por=ciudadano_id, pues un gestor autorizado puede registrar un pago ajeno.
 - Fecha de validación y actualizado_en: definir primero política de relojes y escrituras SQL externas. No añadir desigualdades temporales sin acordarlas.
-- Serializar dos resoluciones del mismo pago: resolver mediante bloqueo/versionado en un PR de aplicación; un CHECK por sí solo no resuelve la concurrencia.
+- Serializar dos resoluciones del mismo pago: #91 ya incorporó bloqueo pesimista en develop y sus pruebas pasan; no se acredita su despliegue en staging. Un CHECK por sí solo no resuelve la concurrencia.
 
 ## V10
 
-No se propone cambio estructural obligatorio: tipos, índice y UNIQUE corresponden al contrato de cotizaciones. La inserción idempotente y validación de filas Banguat pertenecen a un PR de aplicación. Si se decide restringir moneda a un catálogo SQL o persistir la convención explícitamente, se requiere un diseño de V11 o versión posterior separado del endurecimiento de pagos.
+No se propone cambio estructural obligatorio: tipos, índice y UNIQUE corresponden al contrato de cotizaciones. #91 incorporó inserción idempotente y validación parcial de filas Banguat en develop; sus residuales se siguen en [la revisión](revision-V9-V10.md), sin editar V10. Si se decide restringir moneda a un catálogo SQL o persistir la convención explícitamente, se requiere un diseño de V11 o versión posterior separado del endurecimiento de pagos.
 
 ## Validación previa al cierre de la futura migración
 

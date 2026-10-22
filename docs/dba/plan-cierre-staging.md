@@ -21,7 +21,7 @@ Evidencia DBA existente: 67 objetos bajo owner, nueve migraciones exitosas, chec
 | Bloquea evidencia final | Demostrar imagen/pool/TLS/ACL/historial/datos después del relevo, sin errores de autenticación posteriores ni impacto operativo. |
 | Mejora no bloqueante de integridad actual | V9 no obliga todas las reglas de fecha/comentario en SQL, pero Java sí las aplica y pago tiene cero filas; documentar aceptación o futura V11. |
 | Requiere nueva migración si se adopta | CHECK de resolución coherente, rechazo comentado, MIME/hash/tamaño o catálogo de monedas; propuesta separada, no crear V11 ejecutable ahora. |
-| Equipo de aplicación | Resoluciones concurrentes de un mismo pago y exists/save de cotizaciones; bloqueo/versionado e inserción idempotente por PR con pruebas. No es una reparación de propietarios. |
+| Equipo de aplicación | #91 integrado en develop corrige resolución concurrente de pagos y colisión de cotizaciones, con CI 634/0/0/0. Validación del proveedor parcialmente atendida; quedan bordes de redondeo y coherencia de respuesta. [Detalle único](revision-V9-V10.md). Despliegue en staging no acreditado. |
 | Gobierno de repositorio | Ernesto configura exigencia de PR, code owners y checks; el ruleset solo impide borrado/force-push. CODEOWNERS solo no impide fusionar. |
 | Retirada de propuesta obsoleta | Cerrar #84 sin fusionar, solo cuando el usuario lo autorice. #85 lo revisa Ernesto; no fusionamos. |
 
@@ -39,6 +39,7 @@ Revalidación de 22/10/2026, aproximadamente 01:25 UTC: health UP sin sudo; Depl
 2. **Primera operación a autorizar:** sudo para respaldar historial y evidencias de negocio, aplicar únicamente REVOKE ALL a tramites_app sobre tramites.flyway_schema_history y verificar. No incluye contraseñas ni reinicio. [Procedimiento](correccion-permisos-historial.md).
 3. Autorizar por separado una ventana conjunta de 30 minutos para migrador→app. El usuario eligió entrada directa en ambas terminales; Adrián debe confirmar disponibilidad y aceptación del relevo. [Pasos de rotación y recreación única](rotacion-staging-coordinada.md).
 4. Adrián hace exclusivamente su fase tras DBA_LISTO, con la misma imagen/Compose/red/volúmenes. DBA no reinicia desde sus scripts. Su recreación necesita la autorización correspondiente.
+   El merge de #91 no autoriza actualizar a la imagen de develop: la rotación conserva el ID capturado antes de la ventana. Desplegar las correcciones de aplicación es una decisión independiente; no dar por cerradas sus verificaciones de staging usando solo CI.
 5. Autorizar comprobaciones finales que requieran sudo; luego [auditoría final](verificacion-final-staging.md), conciliación de evidencias y revisión del dictamen. No habilitar Deploy automáticamente.
 6. Autorizaciones independientes: cerrar #84 sin fusionar; cualquier merge; modificar reglas/permissions GitHub; cualquier nueva migración. Nada de ello queda autorizado por aprobar el REVOKE.
 

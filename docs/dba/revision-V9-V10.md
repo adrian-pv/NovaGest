@@ -4,6 +4,26 @@ Fecha: 21 de octubre de 2026 (America/Mexico_City). Responsable de revisión: `h
 Base de código: `develop` en `ae014ddc8ea654a3d5e71e510755f1c363feccda`.
 Seguimiento: [issue #87 — Aprobación DBA: migraciones V9 y V10](https://github.com/ernestosantizo2003/NovaGest/issues/87).
 
+## Actualización de aplicación: PR #91 integrado en develop
+
+Ernesto fusionó [#91](https://github.com/ernestosantizo2003/NovaGest/pull/91) el 22/10/2026 a las 01:51:32 UTC: merge `9c6373ec3363181a278fd4137d61e4dcb494bb50`, commits `5b5bbce` y `de63f56`. Se revisaron sus ocho archivos y el código resultante del merge. Solo cambia README, cuatro clases Java y tres archivos de pruebas; no modifica migraciones, dependencias, Compose ni workflows. La revisión original siguiente conserva como línea base ae014ddc; esta sección y las notas actualizadas distinguen su resolución posterior.
+
+| Observación de #87 | Resultado revisado en develop | Límite / seguimiento |
+| --- | --- | --- |
+| Dos decisiones sobre un mismo pago | Resuelta en el flujo revisado: PagoRepository.bloquearPorId usa PESSIMISTIC_WRITE; resolver mantiene @Transactional y vuelve a comprobar PENDIENTE bajo el bloqueo. La segunda decisión recibe 409. | Tres pruebas: espera determinista, carrera de decisiones y comprobantes simultáneos. No se certifica ausencia universal de deadlocks ni el comportamiento de una imagen no inspeccionada. |
+| exists/save concurrente de cotizaciones | Resuelta la colisión de unicidad: INSERT ... ON CONFLICT (fecha,moneda) DO NOTHING conserva UNIQUE y no sobrescribe la fila ganadora. | Seis pruebas de cotizaciones incluyen transacción retenida y carreras reales. Queda por probar la coherencia de respuesta si los competidores traen valores diferentes. |
+| Validar filas del proveedor | Atendida parcialmente: rechaza fecha nula/futura, venta nula/no positiva, moneda fuera del enum y exceso de dígitos enteros antes de redondear. | El filtro no cubre todos los valores que se redondean a escala 6; ver casos de frontera abajo. |
+| Coherencia SQL V9 y comprobantes | Sin cambios: las reglas de estado/validador/fecha/rechazo y los contratos adicionales siguen como decisión de V11. | No se creó V11 ni se modificó V9/V10; titular del trámite y relojes siguen abiertos. |
+| Seguridad operativa | Sin resolver por #91: permisos del historial, credenciales y evidencia posterior siguen pendientes. | Mantener autorización explícita y revisión de hallazgos críticos de Claude antes de operar. |
+
+Evidencia de [CI 39707659446](https://github.com/ernestosantizo2003/NovaGest/actions/runs/39707659446): **634 pruebas, cero fallos/errores/omitidas**, incluidas 3 de PagosConcurrentesTests y 6 de TipoCambioGuardadoTests; cuatro checks del PR verdes. Son pruebas CI de la propuesta integrada, no pruebas ejecutadas por Codex en staging. Las siete mutaciones citadas por el autor en #87 no se reprodujeron en esta revisión.
+
+**Residual numérico comprobado sin base:** el predicado Java actual acepta `0.0000001` y `999999999999.9999999`. En una prueba local JShell con BigDecimal y redondeo HALF_UP a escala 6 dan respectivamente `0.000000` y `1000000000000.000000`: el primero incumpliría CHECK(valor>0), el segundo excedería los 12 enteros de NUMERIC(18,6). PostgreSQL redondea a la escala declarada antes de comprobar precisión ([documentación](https://www.postgresql.org/docs/18/datatype-numeric.html)). No se insertaron estos valores ni se abrió una conexión a staging. Proponer al equipo validar el valor a escala 6 o rechazar pérdida de precisión según contrato, con pruebas de ambos bordes antes de aceptar completamente el filtro. No requiere editar V10 ni cambiar ACL.
+
+**Residual de coherencia inferido del flujo, no reproducido en PostgreSQL:** guardar ignora el resultado 0 de ON CONFLICT y obtener devuelve la venta original del proveedor, sin releer la fila persistida. Si otra transacción conserva 7.65 y esta recibe 7.66 para la misma clave, podría responder 7.66 aunque posteriores consultas usen 7.65. Las pruebas concurrentes actuales usan el mismo valor para ambos competidores. Acordar la política y añadir una prueba con valores distintos; considerar releer el dato ganador. No afirmar pérdida de datos ni corregir la base por este escenario.
+
+**Despliegue no acreditado:** Deploy seguía disabled_manually y la consulta de runs para el merge devolvió cero. Eso no descarta una operación manual; no se inspeccionó el ID de la imagen de staging en esta revisión. No se trasladan estas correcciones a la evidencia operativa anterior ni se cambia la imagen durante la rotación. La recreación acordada conserva el ID registrado antes de la ventana; desplegar #91 requiere otra decisión autorizada. El dictamen sigue CAMBIOS REQUERIDOS ANTES DEL CIERRE.
+
 Cierre operativo actualizado: [plan consolidado](plan-cierre-staging.md), [rotación coordinada](rotacion-staging-coordinada.md) y [verificación final](verificacion-final-staging.md). Adrián y el usuario confirmaron SET ROLE único activo, variables Flyway solo en .env/Compose y currentSchema=tramites. Esa configuración no se modifica desde los scripts DBA. La rotación se limita a migrador→app en una ventana y Adrián recrea una sola vez con la misma imagen. No hay autorización para ejecutarla.
 
 Separación del dictamen: seguridad del historial y claves expuestas bloquean el cierre de seguridad; integridad adicional de V9 y posible catálogo de V10 son mejoras a aceptar/documentar o plantear en V11; las carreras pertenecen al equipo de aplicación. Las condiciones y evidencias faltantes están enumeradas en el plan. No se convierte una propuesta de mejora en una afirmación de datos inválidos existentes.
@@ -55,7 +75,7 @@ Corrección propuesta y recuperación: [restringir escritura del historial en st
 
 **Coherencia adicional de V9:** SQL también permite PENDIENTE con validador/fecha ya informados; la entidad nueva deja ambos nulos. Una V11 puede representar ambos lados de la transición: PENDIENTE implica ambos NULL, resuelto implica ambos no NULL, conservando la segregación existente. `ciudadano_id` se deriva del trámite en el servicio; las FK independientes solo comprueban que usuario y trámite existen, no que ese usuario sea su titular. No se debe imponer creado_por=ciudadano_id: un actor autorizado con alcance total puede registrar un pago para un ciudadano. La auditoría encontró cero pagos; no hay evidencia de incoherencias presentes, y no se propone ningún backfill.
 
-**Observación de concurrencia:** el servicio consulta PENDIENTE y luego escribe sin `@Version` en la entidad ni bloqueo declarado en `PagoRepository`. Dos decisiones sobre el mismo pago pueden competir. Los índices únicos por trámite no serializan esa transición; corresponde validar un escenario concurrente y proponer bloqueo o versión por PR. No es una incompatibilidad de tipos de V9 ni se corrige solo con un CHECK.
+**Observación de concurrencia de la línea base, resuelta en develop por #91:** antes se consultaba PENDIENTE y se escribía sin bloqueo/versionado. Ahora resolver toma PESSIMISTIC_WRITE y comprueba el estado dentro de la misma transacción; las pruebas concurrentes pasan. Los índices únicos por trámite se conservan. La integración no acredita que la imagen de staging incluya el arreglo; véase el seguimiento de #91 arriba.
 
 ## V10: tipos de cambio
 
@@ -66,7 +86,7 @@ Corrección propuesta y recuperación: [restringir escritura del historial en st
 | `fuente VARCHAR(30)`, `creado_en TIMESTAMPTZ` | Coinciden con String de longitud 30 e `Instant`. El servicio usa `BANGUAT`; el callback asigna la fecha. |
 | Claves e índices | PK, UNIQUE(fecha,moneda) e índice (moneda,fecha). La unicidad evita duplicados y el índice corresponde a la búsqueda por moneda y última fecha <= solicitada. No necesita FK para moneda si el código externo Banguat es el modelo acordado. |
 
-**Observación de aplicación:** `TipoCambioService.guardar` usa `existsByFechaAndMoneda` seguido de `save` y `flush`. Solicitudes simultáneas o el trabajo diario pueden intentar insertar la misma clave; UNIQUE conserva la integridad, pero una petición puede fallar. Proponer inserción idempotente con conflicto controlado en un PR de aplicación, con prueba concurrente. No quitar la restricción única. V10 no presenta incompatibilidades estructurales detectadas.
+**Observación de aplicación de la línea base, resuelta en develop por #91:** exists/save/flush se sustituyó por INSERT ... ON CONFLICT (fecha,moneda) DO NOTHING, con pruebas de la colisión. UNIQUE se conserva. La coherencia de la respuesta con valores competidores distintos sigue como escenario a probar; el despliegue en staging no está acreditado. V10 permanece intacta.
 
 ### V10 frente a monedas y convenciones
 
@@ -76,7 +96,7 @@ Corrección propuesta y recuperación: [restringir escritura del historial en st
 
 La clave (fecha,moneda) distingue las once series; el índice (moneda,fecha) sirve para la última cotización <= fecha consultada. La fecha guardada es la del proveedor y puede ser anterior a la solicitada; no se debe imponer igualdad con la fecha de consulta ni rechazar fines de semana. El servicio rechaza consultas futuras, usa hora de Guatemala, marca fallback como estimado y devuelve 503 si no tiene una cotización.
 
-Observaciones para un PR de aplicación: validar moneda/fecha/valor de cada fila del proveedor antes de guardarla (el parser solo convierte tipos, y guardar acepta todas las filas recibidas), y resolver la inserción concurrente. SQL no limita moneda al enum ni fuente a BANGUAT; añadir catálogo/CHECK es una decisión de contrato que requeriría V11 y mantenimiento al incorporar monedas, no un cambio necesario de tipo de V10. No se consultaron cotizaciones en vivo ni se certifica el catálogo externo vigente: se contrastó el contrato implementado.
+La validación de filas se incorporó parcialmente en #91 y la carrera de inserción tiene manejo idempotente; los bordes de redondeo y respuesta frente a valores distintos siguen señalados arriba. SQL no limita moneda al enum ni fuente a BANGUAT; añadir catálogo/CHECK sigue siendo una decisión de contrato que requeriría V11 y mantenimiento al incorporar monedas. No se consultaron cotizaciones en vivo ni se certifica el catálogo externo vigente.
 
 ### Origen de la interpretación sobre propietarios
 
@@ -133,13 +153,13 @@ La regla debe existir en la rama base del PR; agregarla solo en una rama de prop
 
 ## Dictamen y responsables
 
-**Propuesta de dictamen: cambios requeridos por exceso de permisos sobre el historial Flyway; sin aprobación definitiva para producción.** La revisión estructural y la propiedad/checksums pasan. Debe autorizarse la corrección limitada de ACL, ejecutarse y comprobarse antes del cierre. Las mejoras de CHECK y concurrencia se mantienen como observaciones explícitas para decidir por PR; no se han aplicado nuevas migraciones.
+**Propuesta de dictamen: cambios requeridos por exceso de permisos sobre el historial Flyway; sin aprobación definitiva para producción.** La revisión estructural y la propiedad/checksums pasan. Debe autorizarse la corrección limitada de ACL, ejecutarse y comprobarse antes del cierre. Los CHECK siguen como decisión de V11; las carreras originales tienen corrección integrada por #91 y los residuales de aplicación quedan descritos arriba, sin despliegue acreditado. No se han aplicado nuevas migraciones.
 
 | Responsable | Siguiente acción |
 | --- | --- |
 | hgfdiuy / DBA | Revisar el resultado y la propuesta de ACL, autorizar por separado su ejecución y verificar antes del dictamen definitivo. |
 | Ernesto / administrador | Revisar CODEOWNERS y activar exigencias del ruleset; el permiso write del DBA no es admin. |
 | Adrián | Conservar el modelo SET ROLE que produjo propietarios correctos y mantener Deploy deshabilitado hasta la decisión del equipo. |
-| Equipo de aplicación | Evaluar las dos observaciones de concurrencia sin debilitar las restricciones SQL. |
+| Equipo de aplicación | Conservar los arreglos de #91; resolver/pruebar bordes numéricos y coherencia de cotizaciones, y decidir su despliegue por separado. |
 
 El workflow Deploy figura `disabled_manually`; no se habilitó. El PR #84 de redes sigue abierto y su cierre conserva la autorización pendiente. No se fusionaron PR ni se cambiaron producción, credenciales, redes, firewall o servicios.
