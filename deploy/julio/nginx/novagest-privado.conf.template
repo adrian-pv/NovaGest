@@ -1,0 +1,18 @@
+# Acceso privado (Tailscale) de UN entorno de NovaGest. La renderiza
+# instalar-nginx-privado.sh; solo se sustituyen las variables en mayusculas.
+# Se enlaza a la IP de Tailscale del servidor, no a todas las interfaces.
+
+server {
+    listen ${LISTEN_IP}:${LISTEN_PORT};
+    server_name _;
+
+    server_tokens off;
+    # Spring admite 6 MB por solicitud multipart; margen para la cabecera.
+    client_max_body_size 7m;
+
+    access_log /var/log/nginx/novagest-${NG_ENTORNO}.access.log;
+    error_log /var/log/nginx/novagest-${NG_ENTORNO}.error.log warn;
+
+    set $novagest_proto $scheme;
+    include /etc/nginx/snippets/novagest-${NG_ENTORNO}-rutas.conf;
+}
