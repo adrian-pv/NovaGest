@@ -93,15 +93,17 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Primero se construye SIN publicar y se escanea; solo si pasa el escaneo se sube a GHCR.
-      # Así nunca existe en el registro una imagen que no pasó trivy (producción solo usa imágenes publicadas).
-      - name: Construir con el Dockerfile del backend (sin publicar)
+      # La imagen se sube primero con una etiqueta de cuarentena ("<tag>-sin-escanear"), se escanea por su
+      # digest exacto y solo si pasa se le pone la etiqueta definitiva en el registro (mismo digest, sin
+      # volver a subir capas). tramites-ctl solo acepta etiquetas hexadecimales, así que la de cuarentena
+      # nunca se puede desplegar. (Antes: load + docker push, que GHCR rechazaba con "unknown blob".)
+      - name: Construir con el Dockerfile del backend y subir a cuarentena
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          load: true
-          push: false
-          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}-sin-escanear
           labels: |
             org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -110,14 +112,18 @@ jobs:
       - name: Escanear la imagen (CRITICAL con parche disponible)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          image-ref: ${{ steps.meta.outputs.image }}@${{ steps.build.outputs.digest }}
           severity: CRITICAL
           ignore-unfixed: true
           exit-code: "1"
-      - name: Publicar en GHCR (solo si pasó el escaneo)
+      - name: Publicar con la etiqueta definitiva (solo si pasó el escaneo)
         env:
-          REF: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
-        run: docker push "$REF"
+          IMAGE: ${{ steps.meta.outputs.image }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker buildx imagetools create -t "$IMAGE:$TAG" "$IMAGE@$DIGEST"
+          docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest.Digest}}'
       # Solo archivos estáticos (FROM scratch): misma etiqueta que el backend, así tramites-ctl
       # publica el frontend que corresponde a ese mismo código.
       - name: Publicar el frontend en GHCR
