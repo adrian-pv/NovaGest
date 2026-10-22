@@ -91,9 +91,13 @@ backup_before_migration() {
   local host port
   host="$(envval DB_HOST)"; port="$(envval DB_PORT)"
   [[ "$host" == host.docker.internal ]] && host=127.0.0.1
-  PGPASSWORD="$(envval DB_PASSWORD)" pg_dump -Fc \
+  # Respalda con el usuario de migraciones (dueño de las tablas); si no hay, con el de la app.
+  local user pass
+  user="$(envval FLYWAY_USER)"; pass="$(envval FLYWAY_PASSWORD)"
+  [[ -n "$user" ]] || { user="$(envval DB_USER)"; pass="$(envval DB_PASSWORD)"; }
+  PGPASSWORD="$pass" pg_dump -Fc \
     -h "${host:-127.0.0.1}" -p "${port:-5432}" \
-    -U "$(envval DB_USER)" -d "$(envval DB_NAME)" >"$file.tmp" \
+    -U "$user" -d "$(envval DB_NAME)" >"$file.tmp" \
     || { rm -f "$file.tmp"; die "pg_dump falló; no se despliega sin respaldo"; }
   mv "$file.tmp" "$file"; chmod 600 "$file"
   # Conserva solo los últimos N respaldos previos a despliegue.
@@ -113,7 +117,9 @@ deploy_tag() {
   export APP_TAG="$tag"            # compose lo necesita en TODAS sus llamadas (ps, logs, up)
   "${COMPOSE[@]}" pull -q app
   backup_before_migration "$tag"
-  "${COMPOSE[@]}" up -d --remove-orphans
+  # Si "up" falla a medias (p. ej. red o contenedor), no se sale aquí: se sigue al chequeo de salud
+  # para que, si no queda sana, se active la reversión automática a la versión anterior.
+  "${COMPOSE[@]}" up -d --remove-orphans || log "compose up terminó con error; se verifica salud y, si falla, se revierte"
 
   if wait_healthy; then
     if [[ "$before" != "$tag" ]]; then
@@ -132,7 +138,7 @@ deploy_tag() {
   if [[ -n "$before" && "$before" != "$tag" ]]; then
     log "Volviendo automáticamente a $before"
     export APP_TAG="$before"
-    "${COMPOSE[@]}" up -d --remove-orphans
+    "${COMPOSE[@]}" up -d --remove-orphans || log "compose up de la reversión terminó con error"
     if wait_healthy; then
       audit "reversión automática OK $before"
       log "Se restauró $before."
