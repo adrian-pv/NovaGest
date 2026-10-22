@@ -837,3 +837,74 @@ input[type='file'].campo__entrada {
 .campo-tipo .campo--casilla {
   grid-column: 1 / -1;
 }
+
+/* Usuarios, roles y permisos (tarjeta 38) */
+.insignias {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.selector-roles {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.selector-roles legend {
+  padding: 0;
+  margin-bottom: 0.25rem;
+  font-weight: 700;
+}
+
+.rol-opcion {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--borde);
+  border-radius: 0.5rem;
+}
+
+.rol-opcion label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+}
+
+.rol-opcion input {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.rol-opcion p {
+  margin: 0.1rem 0;
+}
+
+.rol-opcion summary {
+  cursor: pointer;
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+}
+
+.permisos {
+  margin: 0.5rem 0 0;
+}
+
+.permisos__fila {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding: 0.25rem 0;
+  border-top: 1px solid var(--borde);
+}
+
+.permisos dt {
+  font-weight: 600;
+  min-width: 9rem;
+}
+
+.permisos dd {
+  margin: 0;
+}

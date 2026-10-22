@@ -14,6 +14,10 @@ import NuevoTramite from './tramites/NuevoTramite'
 import EditarTipo from './tipos/EditarTipo'
 import ListaTipos from './tipos/ListaTipos'
 import NuevoTipo from './tipos/NuevoTipo'
+import EditarUsuario from './usuarios/EditarUsuario'
+import ListaRoles from './usuarios/ListaRoles'
+import ListaUsuarios from './usuarios/ListaUsuarios'
+import NuevoUsuario from './usuarios/NuevoUsuario'
 
 /**
  * Rutas de la aplicación. Todas se dibujan dentro del marco común (Diseno). Las que exigen sesión van dentro de
@@ -49,6 +53,18 @@ export default function App() {
         </Route>
         <Route element={<RutaProtegida permiso="tipo_tramite:crear" />}>
           <Route path="/tipos/nuevo" element={<NuevoTipo />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="usuario:leer" />}>
+          <Route path="/usuarios" element={<ListaUsuarios />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="usuario:crear" />}>
+          <Route path="/usuarios/nuevo" element={<NuevoUsuario />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="usuario:editar" />}>
+          <Route path="/usuarios/:id/editar" element={<EditarUsuario />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="rol:leer" />}>
+          <Route path="/roles" element={<ListaRoles />} />
         </Route>
         <Route path="*" element={<NoEncontrado />} />
       </Route>
