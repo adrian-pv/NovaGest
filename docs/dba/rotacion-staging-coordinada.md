@@ -6,9 +6,15 @@ Sustituye el procedimiento anterior `novagest-rotar.sh`: ese script incluye otro
 
 Una sola ventana, orden **tramites_migrador → tramites_app**, dos claves únicas nuevas, una sola recreación por Adrián. DBA cambia PostgreSQL y prueba autenticación; Adrián actualiza FLYWAY_PASSWORD/DB_PASSWORD en staging/.env y recrea el contenedor; DBA verifica después. Ningún script DBA modifica archivos de entorno ni reinicia.
 
-El usuario eligió **sesión conjunta con entrada directa en las terminales**. El custodio introduce cada valor en los prompts ocultos de psql y luego en la sesión privada de Adrián; los valores no pasan por GitHub, chat, capturas, argumentos de comandos ni un archivo de intercambio. No compartir pantalla ni registrar la TTY durante la entrada. Adrián administra su edición privada del .env; nuestro script no la hace. Si el custodio no puede operar ambas terminales por los canales SSH ya autorizados, se detiene y se acuerda otro canal; no se improvisa una transmisión de claves.
+**Las claves nacen y se consumen en daniel1; nadie las ve ni las transmite** (sustituye la entrada manual del custodio en dos terminales, que no garantizaba entregar a Adrián exactamente los valores fijados):
 
-Generar dos valores nuevos de 32+ caracteres aleatorios con una herramienta local de contraseñas; usar alfabeto A–Z/a–z/0–9/_/- para evitar interpretación del lector .env actual. El agente no genera, recibe ni conserva los valores. Adrián confirma antes de comenzar que puede introducir ambos valores y recrear inmediatamente después de DBA_LISTO.
+- `rotar-staging-coordinado.sh` genera cada clave en el servidor (`secrets.token_hex(32)`: 256 bits, 64 caracteres hex, seguros para Compose y para el lector `envval` de tramites-ctl) y la escribe solo en `/run/novagest-rotacion-staging/FLYWAY_PASSWORD` o `DB_PASSWORD` (tmpfs en RAM, directorio root 700, archivos 600).
+- PostgreSQL recibe el **verificador SCRAM** calculado en el servidor, nunca la clave; la sesión desactiva `log_statement` y `log_min_duration_statement`. La autenticación nueva con TLS lee la clave del archivo mediante un pgpass temporal del mismo directorio.
+- Adrián, como root en daniel1, carga las dos variables en `.env` **desde esos mismos archivos** con el bloque de abajo, que no las muestra y comprueba que el resto del archivo no cambia. No hay canal de transmisión que proteger: ni chat, ni gestor, ni copia cifrada, ni portapapeles.
+- `verificar-staging-final.sh` compara en memoria las variables del contenedor recreado con esos archivos y vuelve a autenticar ambos roles con ellos: así se acredita que lo configurado es exactamente lo establecido.
+- Tras la verificación final se retira el directorio; `.env` queda como única copia. Si el servidor se reinicia antes, el tmpfs desaparece: se vuelve a rotar (no se recuperan claves).
+
+El agente no ve, recibe ni conserva los valores. Adrián confirma antes de comenzar que estará como root en daniel1 y puede cargar y recrear inmediatamente después de DBA_LISTO: desde ese momento las conexiones nuevas del pool con la clave anterior fallan (Hikari renueva cada conexión a los 30 min).
 
 ## Ventana propuesta
 
@@ -44,7 +50,7 @@ bash rotar-staging-coordinado.sh --plan
 bash rotar-staging-coordinado.sh rotar
 ```
 
-La ejecución exige la frase ROTAR SOLO STAGING. Internamente usa `psql -X` y `\password` para cada rol, con SCRAM calculado por el cliente; no construye ALTER ROLE con la contraseña. Luego `psql -W`, sin PGPASSWORD heredado ni pgpass, abre una conexión nueva a tramites_pruebas con sslmode=require y verifica usuario/base/TLS y capacidad SET ROLE esperada. Los prompts no hacen eco. No activar ECHO_HIDDEN, bash -x ni captura de terminal. [Documentación de psql](https://www.postgresql.org/docs/18/app-psql.html).
+La ejecución exige la frase ROTAR SOLO STAGING y que `/run/novagest-rotacion-staging` no exista. Para cada rol, en orden migrador → app: genera la clave, aplica `ALTER ROLE … PASSWORD 'SCRAM-SHA-256$4096:…'` por stdin de psql y abre una conexión nueva a tramites_pruebas con sslmode=require que verifica usuario, base, TLS y la capacidad SET ROLE esperada. Al final verifica otra vez ambos roles y solo entonces imprime DBA_LISTO. `bash rotar-staging-coordinado.sh comprobar` repite esa verificación sin cambiar nada. No activar bash -x ni captura de terminal.
 
 La conexión de prueba sale por loopback y verifica credencial/TLS; la ruta desde el contenedor se comprobará tras recrearlo. Las sesiones del pool ya abiertas pueden seguir vivas durante el intervalo y health UP no basta para demostrar que las claves nuevas funcionan. No se terminan sesiones desde nuestro script.
 
@@ -73,12 +79,24 @@ rot_snapshot=$(mktemp -d /root/novagest-recreacion.XXXXXXXX)
 printf '%s\n' "$rot_image" >"$rot_snapshot/image-id.txt"
 docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k $v.NetworkID}}{{end}}{{range .Mounts}}{{println .Type .Name .Source .Destination}}{{end}}' "$rot_cid" | sort >"$rot_snapshot/topologia-antes.txt"
 docker network inspect novagest-staging_default >/dev/null
-cp -p -- .env "$rot_snapshot/env-antes"    # Adrian: privado; nunca subirlo
-# Adrian actualiza FLYWAY_PASSWORD y DB_PASSWORD en su editor/herramienta privada.
-# No mostrar los valores en pantalla compartida ni usar echo/sed con claves en argumentos.
-# No avanzar hasta haber guardado ambas variables; conservar las otras lineas.
-read -r -p 'Tras editar en privado ambas variables, escribe AMBAS VARIABLES ACTUALIZADAS: ' rot_ack </dev/tty
-[[ $rot_ack == 'AMBAS VARIABLES ACTUALIZADAS' ]]
+# --- carga de claves: solo despues de DBA_LISTO. Sin copia de .env: solo una huella de las demas lineas.
+rot_sec=/run/novagest-rotacion-staging
+[[ -d $rot_sec && ! -L $rot_sec && -O $rot_sec && $(stat -c %a -- "$rot_sec") == 700 && -s $rot_sec/FLYWAY_PASSWORD && -s $rot_sec/DB_PASSWORD ]]
+[[ $(grep -c '^FLYWAY_PASSWORD=' .env) == 1 && $(grep -c '^DB_PASSWORD=' .env) == 1 ]]
+[[ $(grep -cE '^(FLYWAY_PASSWORD|DB_PASSWORD|SPRING_FLYWAY_PASSWORD|SPRING_DATASOURCE_PASSWORD)=' app.env) == 0 ]]
+grep -Ev '^(FLYWAY_PASSWORD|DB_PASSWORD)=' .env | sha256sum >"$rot_snapshot/resto-env-antes.sha256"
+rot_env=$(mktemp /opt/tramites/staging/.env.rotacion.XXXXXXXX)
+awk -v d="$rot_sec" '
+  BEGIN { if ((getline f < (d "/FLYWAY_PASSWORD")) <= 0 || (getline a < (d "/DB_PASSWORD")) <= 0) { err = 1; exit } }
+  /^FLYWAY_PASSWORD=/ { print "FLYWAY_PASSWORD=" f; nf++; next }
+  /^DB_PASSWORD=/ { print "DB_PASSWORD=" a; na++; next }
+  { print }
+  END { if (err) exit 4; if (nf != 1 || na != 1) exit 3 }' .env >"$rot_env"
+grep -Ev '^(FLYWAY_PASSWORD|DB_PASSWORD)=' "$rot_env" | sha256sum | cmp - "$rot_snapshot/resto-env-antes.sha256"
+chown --reference=.env -- "$rot_env"
+chmod --reference=.env -- "$rot_env"
+mv -f -- "$rot_env" .env
+# --- fin de la carga; .env ya tiene las claves vigentes. Recrear sin pausa:
 rot_compose=(docker compose --project-directory /opt/tramites/staging -f /opt/tramites/staging/compose.yaml --env-file /opt/tramites/staging/.env)
 [[ $(docker image inspect -f '{{.Id}}' "$rot_ref") == "$rot_image" ]]
 APP_TAG="$rot_tag" "${rot_compose[@]}" config --format json | python3 -c 'import json,sys; c=json.load(sys.stdin); assert c["services"]["app"]["image"]==sys.argv[1]' "$rot_ref"
@@ -91,18 +109,20 @@ exec 9>&-
 # Conservar snapshot privado y comunicar ADRIAN_LISTO sin valores de contrasenas.
 ```
 
-El JSON de `config` solo transita por memoria hacia el filtro: no imprimirlo, usar tee ni guardarlo en logs. El bloque contiene una pausa humana para editar, no un editor automático. Cualquier discrepancia de imagen/topología detiene la entrega y se investiga. No ejecutar down, pull, build, eliminación de volúmenes, red externa de #84 ni un segundo reinicio como intento automático. [Docker restart](https://docs.docker.com/reference/cli/docker/compose/restart/), [Docker up](https://docs.docker.com/reference/cli/docker/compose/up/).
+El JSON de `config` solo transita por memoria hacia el filtro: no imprimirlo, usar tee ni guardarlo en logs. La carga escribe un `.env` nuevo en el mismo directorio (mismo dueño y modo) y lo sustituye de forma atómica; si algo falla antes del `mv`, `.env` queda intacto y se borra el temporal `.env.rotacion.*` sin mirarlo. No usar nano/sed/echo con los valores: mostrarían o expondrían las claves. Cualquier discrepancia de imagen/topología detiene la entrega y se investiga. No ejecutar down, pull, build, eliminación de volúmenes, red externa de #84 ni un segundo reinicio como intento automático. [Docker restart](https://docs.docker.com/reference/cli/docker/compose/restart/), [Docker up](https://docs.docker.com/reference/cli/docker/compose/up/).
 
 ## Recuperación
 
 - Fallo antes de cambiar un rol: no continuar; PostgreSQL permanece con su estado previo para ese rol.
-- Fallo entre roles o autenticación no confirmada: mantener Deploy pausado; Adrián no edita/recrea. Tratar el rol como potencialmente cambiado y volver a fijarlo con una clave NUEVA mediante `rotar-migrador` o `rotar-app` en la misma copia verificada. Estos modos son solo recuperación, con autorización; la ejecución normal siempre rota ambos en orden.
-- La recuperación de un solo rol emite RECUPERACION_ROL_LISTA, nunca DBA_LISTO. Antes de cualquier entrega tras una recuperación, verificar nuevamente los dos roles con sus claves vigentes y registrar la decisión conjunta; recuperar uno no acredita el otro.
-- No recuperar la contraseña expuesta. No restaurar hashes antiguos ni repetir automáticamente la rotación. Reanudar solo cuando ambos roles autentiquen y el custodio pueda introducir los valores vigentes en la sesión de Adrián.
-- Si .env quedó incorrecto: Adrián corrige exclusivamente las dos variables con los valores vigentes. Su respaldo sirve para otras líneas, no para volver a las claves comprometidas.
+- Fallo entre roles o autenticación no confirmada: mantener Deploy pausado; Adrián no carga ni recrea. Volver a fijar el rol afectado con una clave NUEVA mediante `rotar-migrador` o `rotar-app` en la misma copia verificada (reutilizan el directorio de claves). Estos modos son solo recuperación, con autorización; la ejecución normal siempre rota ambos en orden.
+- Cualquier modo termina verificando los dos roles con los archivos vigentes; solo entonces emite DBA_LISTO.
+- No recuperar la contraseña expuesta. No restaurar hashes antiguos ni repetir automáticamente la rotación.
+- Si .env quedó incorrecto: Adrián repite la carga desde el mismo directorio (fuente única de las claves vigentes). No hay copia de .env con las claves comprometidas que restaurar, a propósito.
 - Si la recreación no queda sana: preservar imagen/topología/volúmenes; revisar localmente credenciales y configuración efectiva. DBA puede ayudar con conexiones de solo lectura. No cambiar imagen ni datos como recuperación automática. Una segunda recreación o cambio de clave requiere decisión explícita del equipo.
-- Las contraseñas no se respaldan en nuestros scripts. Su recuperación es fijar otra clave nueva con el custodio, preservando la coordinación.
+- Las contraseñas no se respaldan fuera del directorio tmpfs de la ventana. Perder ese directorio antes de la carga de Adrián se resuelve fijando otras claves nuevas.
 
 ## Verificación final
 
 Solo después de ADRIAN_LISTO y con autorización para sudo, ejecutar el [protocolo final](verificacion-final-staging.md). Conservar evidencias sin secretos, dejar Deploy pausado y solicitar revisión del dictamen. El éxito técnico no autoriza producción.
+
+Cuando la verificación final termina en OK, retirar las claves temporales (como root): `rm -f -- /run/novagest-rotacion-staging/{FLYWAY_PASSWORD,DB_PASSWORD} && rmdir /run/novagest-rotacion-staging`.

@@ -10,20 +10,27 @@ fi
 [[ $EUID -eq 0 ]] || exit 1
 expected=$2
 dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-[[ -f $dir/guardia-historial-staging.sql && -f $dir/auditoria-staging.sql ]] || exit 1
+[[ -f $dir/guardia-historial-staging.sql && -f $dir/auditoria-staging.sql && -f $dir/rotar-staging-coordinado.sh ]] || exit 1
 [[ -f /opt/tramites/staging/.lock && ! -L /opt/tramites/staging/.lock ]] || exit 1
 exec 9<>/opt/tramites/staging/.lock
 flock -n 9 || { echo 'ERROR: Adrian u otra operacion aun usa el candado' >&2; exit 1; }
-{ exec 3<>/dev/tty; } 2>/dev/null || exit 1
+# Claves vigentes de la ventana (las dejo rotar-staging-coordinado.sh); se leen, nunca se muestran.
+sec=/run/novagest-rotacion-staging
+[[ -d $sec && ! -L $sec && -O $sec && $(stat -c %a -- "$sec") == 700 && -s $sec/FLYWAY_PASSWORD && -s $sec/DB_PASSWORD ]] \
+  || { echo "ERROR: faltan las claves de la ventana en $sec" >&2; exit 1; }
 cid=novagest-staging-app-1
 [[ $(docker inspect -f '{{.Image}}' "$cid") == "$expected" ]] || { echo 'ERROR: imagen distinta' >&2; exit 1; }
 [[ $(docker inspect -f '{{.State.Status}}' "$cid") == running ]] || exit 1
 curl -fsS --max-time 10 http://127.0.0.1:8081/actuator/health | python3 -c \
   'import json,sys; assert json.load(sys.stdin).get("status")=="UP"; print("OK: health UP")'
 # JSON de entorno solo en memoria; nunca se imprime ni se guarda. No se imprime la URL JDBC.
-docker inspect -f '{{json .Config.Env}}' "$cid" | python3 -c '
+docker inspect -f '{{json .Config.Env}}' "$cid" | python3 -I -c '
 import json,sys,urllib.parse
 e=dict(x.split("=",1) for x in json.load(sys.stdin) if "=" in x)
+clave=lambda v: open(sys.argv[1]+"/"+v).read().strip()
+assert e.get("SPRING_FLYWAY_PASSWORD")==clave("FLYWAY_PASSWORD"), "FLYWAY_PASSWORD del contenedor distinta de la fijada en PostgreSQL"
+assert e.get("DB_PASSWORD")==clave("DB_PASSWORD"), "DB_PASSWORD del contenedor distinta de la fijada en PostgreSQL"
+print("OK: el contenedor usa exactamente las dos claves fijadas en PostgreSQL")
 assert e.get("SPRING_FLYWAY_USER")=="tramites_migrador"
 assert e.get("DB_USER")=="tramites_app"
 assert e.get("SPRING_DATASOURCE_USERNAME","tramites_app")=="tramites_app"
@@ -34,19 +41,9 @@ if "SPRING_DATASOURCE_PASSWORD" in e: assert e["SPRING_DATASOURCE_PASSWORD"]==e[
 url=e.get("SPRING_DATASOURCE_URL","")
 assert urllib.parse.parse_qs(urllib.parse.urlsplit(url.removeprefix("jdbc:")).query).get("currentSchema")==["tramites"]
 print("OK: usuarios separados, SET ROLE unico y currentSchema; secretos no mostrados")
-'
-for rol in tramites_migrador tramites_app; do
-  printf 'Verificacion final de %s: introducir la clave NUEVA sin eco.\n' "$rol" >&3
-  expected_auth="$rol|tramites_pruebas|t"
-  auth="$(env -u PGPASSWORD -u PGSERVICE -u PGSERVICEFILE -u PGHOSTADDR PGPASSFILE=/dev/null \
-    PGCONNECT_TIMEOUT=8 PGOPTIONS=-cdefault_transaction_read_only=on \
-    psql -X -W -qAt -v ON_ERROR_STOP=1 \
-    -d "host=127.0.0.1 port=5432 dbname=tramites_pruebas user=$rol sslmode=require gssencmode=disable" \
-    -c 'SELECT current_user,current_database(),(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid())' \
-    </dev/tty 2>/dev/tty)"
-  [[ $auth == "$expected_auth" ]] || exit 1
-  echo "OK: autenticacion nueva de $rol y TLS"
-done
+' "$sec"
+# Autenticacion nueva TLS de ambos roles con esas mismas claves (mismo codigo probado que la rotacion).
+bash "$dir/rotar-staging-coordinado.sh" comprobar
 PSQL=(runuser -u postgres -- env -u PGPASSWORD -u PGSERVICE -u PGSERVICEFILE -u PGHOSTADDR PGPASSFILE=/dev/null PGOPTIONS=-cdefault_transaction_read_only=on psql -X -v ON_ERROR_STOP=1 -P pager=off -h /var/run/postgresql -p 5432 -U postgres -d tramites_pruebas)
 "${PSQL[@]}" <"$dir/guardia-historial-staging.sql"
 "${PSQL[@]}" <"$dir/auditoria-staging.sql"

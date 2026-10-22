@@ -49,7 +49,7 @@ Scripts en [scripts/](scripts/), manifest [SHA256SUMS](scripts/SHA256SUMS). No s
 
 Después de autorización, copiar únicamente el paquete, nunca credenciales. La ruta local de trabajo y config SSH es la ya exclusiva de NovaGest. Las órdenes PowerShell/RTK exactas se conservan en `NovaGest-Infra/docs/ejecucion-cierre-staging.md`, junto al hash del manifest fijado para verificar la copia de root. No se ha subido ni ejecutado el paquete en el servidor durante esta preparación.
 
-Antes de ejecutar cada script, verificar todos los hashes desde una carpeta privada de root y ejecutar bash -n. El cambio ACL usa `corregir-historial-staging.sh --aplicar`; la rotación usa `rotar-staging-coordinado.sh rotar`; la verificación usa `verificar-staging-final.sh --verificar <ID sha256 previo>`. No ejecutar REVOKE, \password ni sudo durante la revisión de este documento.
+Antes de ejecutar cada script, verificar todos los hashes desde una carpeta privada de root y ejecutar bash -n. El cambio ACL usa `corregir-historial-staging.sh --aplicar`; la rotación usa `rotar-staging-coordinado.sh rotar`; la verificación usa `verificar-staging-final.sh --verificar <ID sha256 previo>`. No ejecutar REVOKE, rotación ni sudo durante la revisión de este documento.
 
 ## Evidencias faltantes para la revisión final de #88
 

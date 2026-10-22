@@ -285,9 +285,147 @@ INSERT INTO flyway_schema_history(installed_rank,version,description,type,script
     reset()
     script('revocar-historial-staging.sql')
 
+    # Rotacion: rotar-staging-coordinado.sh de punta a punta con su texto real y log_statement=all para
+    # detectar fugas al registro. pg_hba como staging: SCRAM en 127.0.0.1 con o sin TLS, asi que exigir
+    # TLS depende solo del script.
+    import shutil, sys
+    with (DATA/'pg_hba.conf').open('r+', encoding='utf-8') as f:
+        hba = f.read(); f.seek(0)
+        f.write('host tramites_pruebas tramites_migrador,tramites_app 127.0.0.1/32 scram-sha-256\n' + hba)
+    def recargar(sentencia, ajuste, valor):
+        sql(sentencia + '\nSELECT pg_reload_conf();', 'postgres')
+        for _ in range(100):
+            if sql(f'SHOW {ajuste};', 'postgres') == valor:
+                return
+            time.sleep(.05)
+        raise RuntimeError(f'{ajuste} no se recargo')
+    recargar("ALTER SYSTEM SET log_statement = 'all';", 'log_statement', 'all')
+    sql("ALTER ROLE tramites_migrador PASSWORD 'clave-vieja-migrador'; ALTER ROLE tramites_app PASSWORD 'clave-vieja-app';")
+    def autentica(rol, clave, ssl='require'):
+        return run([exe('psql'), '-X', '-w', '-qAt', '-d', f'host=127.0.0.1 port={PORT} dbname=tramites_pruebas user={rol} sslmode={ssl}',
+                    '-c', 'SELECT 1'], check=False, env=dict(ENV, PGPASSWORD=clave)).returncode == 0
+    assert autentica('tramites_app', 'clave-vieja-app') and not autentica('tramites_app', 'otra')
+    assert autentica('tramites_app', 'clave-vieja-app', 'disable'), 'pg_hba de prueba debe admitir sin TLS, como staging'
+    CLAVES = WORK/'claves'
+    candado = WORK/'lock-rotacion'; candado.write_text('')
+    texto = (SCRIPTS/'rotar-staging-coordinado.sh').read_text('utf-8')
+    for viejo, nuevo in [
+            ("[[ $EUID -eq 0 ]] || { echo 'ERROR: requiere autorizacion y sudo interactivo' >&2; exit 1; }\n", ''),
+            ('psql python3 runuser flock env stat', 'psql flock env stat'),
+            ("{ exec 3<>/dev/tty; } 2>/dev/null || { echo 'ERROR: requiere TTY' >&2; exit 1; }", 'exec 3>/dev/null'),
+            ('IFS= read -r ack <&3', 'ack=$ACK'),
+            ('/opt/tramites/staging/.lock', candado.as_posix()),
+            ('sec=/run/novagest-rotacion-staging', f"sec='{CLAVES.as_posix()}'"),
+            ('runuser -u postgres -- ', ''),
+            ('-h /var/run/postgresql -p 5432 -U postgres', f'-h 127.0.0.1 -p {PORT} -U novagest_test_admin'),
+            ('host=127.0.0.1 port=5432', f'host=127.0.0.1 port={PORT}'),
+            ('127.0.0.1:5432:tramites_pruebas', f'127.0.0.1:{PORT}:tramites_pruebas'),
+            ('python3 -I', f"'{posix(sys.executable)}' -I"),
+            ('set -euo pipefail\n', 'set -euo pipefail\nflock() { return 0; }\n')]:
+        assert texto.count(viejo) >= 1, viejo
+        texto = texto.replace(viejo, nuevo)
+    (WORK/'rotar.sh').write_bytes(texto.encode())
+    VISTAS = set()
+    def claves():
+        c = {v: (CLAVES/v).read_text().strip() for v in ('FLYWAY_PASSWORD', 'DB_PASSWORD')}
+        VISTAS.update(c.values())
+        return c
+    def rotar(caso, arg, esperado, ack='ROTAR SOLO STAGING'):
+        env = dict(ENV, PATH=str(BIN) + os.pathsep + os.environ['PATH'], ACK=ack)
+        p = run([os.environ['BASH_TEST_BIN'], posix(WORK/'rotar.sh'), arg], check=False, env=env)
+        salida = p.stdout.decode('utf-8', 'replace') + p.stderr.decode('utf-8', 'replace')
+        listo = 'DBA_LISTO' in salida
+        assert p.returncode == esperado and listo == (esperado == 0 and arg.startswith('rotar')), (caso, p.returncode, salida)
+        assert not (CLAVES/'pgpass').exists(), 'pgpass temporal no retirado'
+        if CLAVES.exists():
+            assert not any(v in salida for v in claves().values()), 'clave en la salida'
+        RESULTS.append({'caso': f'rotar {arg}: {caso}', 'esperado': esperado, 'observado': p.returncode, 'dba_listo': listo})
+        return salida
+    def vigentes():
+        c = claves()
+        return autentica('tramites_migrador', c['FLYWAY_PASSWORD']) and autentica('tramites_app', c['DB_PASSWORD'])
+
+    assert 'tmpfs' in rotar('plan', '--plan', 0) and not CLAVES.exists()
+    rotar('argumento invalido', 'rotar-todo', 2)
+    rotar('frase incorrecta', 'rotar', 2, ack='si')
+    assert not CLAVES.exists() and autentica('tramites_app', 'clave-vieja-app')
+    rotar('sin directorio de claves', 'comprobar', 1)
+    salida = rotar('normal', 'rotar', 0)
+    c = claves()
+    assert all(re.fullmatch('[0-9a-f]{64}', v) for v in c.values()) and c['FLYWAY_PASSWORD'] != c['DB_PASSWORD']
+    assert vigentes()
+    assert not autentica('tramites_migrador', 'clave-vieja-migrador') and not autentica('tramites_app', 'clave-vieja-app')
+    assert salida.index('OK: tramites_migrador') < salida.index('OK: tramites_app'), 'orden migrador -> app'
+    assert sql("SELECT string_agg(left(rolpassword,19),',') FROM pg_authid WHERE rolname IN ('tramites_app','tramites_migrador')") \
+        == 'SCRAM-SHA-256$4096:,SCRAM-SHA-256$4096:'
+    rotar('directorio de una ventana anterior', 'rotar', 1)
+    assert claves() == c and vigentes()
+    rotar('claves vigentes', 'comprobar', 0)
+    for caso, romper, arreglar in [
+            ('app con otra clave', "ALTER ROLE tramites_app PASSWORD 'otra-clave';", None),
+            ('app puede SET ROLE al dueno', 'GRANT tramites_owner TO tramites_app;', 'REVOKE tramites_owner FROM tramites_app;'),
+            ('migrador sin SET ROLE', 'REVOKE tramites_owner FROM tramites_migrador;',
+             'GRANT tramites_owner TO tramites_migrador WITH INHERIT TRUE, SET TRUE;')]:
+        sql(romper)
+        rotar(caso, 'comprobar', 1)
+        if arreglar:
+            sql(arreglar)
+        else:
+            rotar(f'recuperacion tras {caso}', 'rotar-app', 0)
+            assert claves()['FLYWAY_PASSWORD'] == c['FLYWAY_PASSWORD'] and claves()['DB_PASSWORD'] != c['DB_PASSWORD'] and vigentes()
+        rotar(f'tras corregir {caso}', 'comprobar', 0)
+    recargar('ALTER SYSTEM SET ssl = off;', 'ssl', 'off')
+    rotar('servidor sin TLS', 'comprobar', 1)
+    recargar('ALTER SYSTEM RESET ssl;', 'ssl', 'on')
+    # En Git Bash (NTFS montado con noacl) stat muestra 0777 & ~umask: el modo solo se puede probar en Linux.
+    if os.name != 'nt':
+        CLAVES.chmod(0o755)
+        rotar('directorio de claves legible por otros', 'comprobar', 1)
+        CLAVES.chmod(0o700)
+    # Fallo a mitad: la app cambia de clave pero no puede entrar; DETENIDO sin DBA_LISTO y recuperacion de un rol.
+    shutil.rmtree(CLAVES)
+    sql('ALTER ROLE tramites_app NOLOGIN;')
+    salida = rotar('app sin LOGIN tras su cambio', 'rotar', 1)
+    assert 'DETENIDO. Roles cuyo cambio se inicio: tramites_migrador tramites_app' in salida
+    sql('ALTER ROLE tramites_app LOGIN;')
+    migrador = claves()['FLYWAY_PASSWORD']
+    rotar('recuperacion de la app', 'rotar-app', 0)
+    assert claves()['FLYWAY_PASSWORD'] == migrador and vigentes()
+    registro = (WORK/'postgres.log').read_text('utf-8', 'replace')
+    assert 'ALTER ROLE tramites_app PASSWORD' in registro, 'log_statement=all no registra: la prueba no vale'
+    assert 'SCRAM-SHA-256$' not in registro and not any(v in registro for v in VISTAS), 'clave o verificador en el log'
+    RESULTS.append({'caso': f'log de PostgreSQL sin {len(VISTAS)} claves generadas ni verificadores', 'observado': 0})
+
+    # Carga de Adrian: el bloque real del procedimiento sobre un .env de fixture con las claves vigentes.
+    doc = (REPO/'docs/dba/rotacion-staging-coordinada.md').read_bytes().decode('utf-8').replace('\r\n', '\n')
+    carga = doc.split('# --- carga de claves', 1)[1].split('\n', 1)[1].split('# --- fin de la carga', 1)[0]
+    fx = Path(tempfile.mkdtemp(prefix='staging-', dir=WORK))
+    (fx/'snap').mkdir()
+    def cargar(caso, env_txt, app_txt='JWT_SECRET=fixture\n', esperado=0):
+        (fx/'.env').write_bytes(env_txt.encode()); (fx/'app.env').write_bytes(app_txt.encode())
+        cuerpo = carga.replace('/run/novagest-rotacion-staging', CLAVES.as_posix()).replace('/opt/tramites/staging/', fx.as_posix() + '/')
+        cmd = f"set -euo pipefail\numask 077\ncd '{fx.as_posix()}'\nrot_snapshot='{(fx/'snap').as_posix()}'\n{cuerpo}echo CARGA_OK\n"
+        p = run([os.environ['BASH_TEST_BIN'], '-c', cmd], check=False)
+        salida = (p.stdout + p.stderr).decode('utf-8', 'replace')
+        assert p.returncode == esperado and ('CARGA_OK' in salida) == (esperado == 0), (caso, p.returncode, salida)
+        assert not any(v in salida for v in claves().values()), 'clave en la salida de la carga'
+        RESULTS.append({'caso': f'carga de Adrian: {caso}', 'esperado': esperado, 'observado': p.returncode})
+        return (fx/'.env').read_bytes().decode()
+    base = ('COMPOSE_PROJECT_NAME=novagest-staging\nDB_USER=tramites_app\nDB_PASSWORD=clave-vieja-app\n'
+            'FLYWAY_USER=tramites_migrador\nFLYWAY_PASSWORD=clave-vieja-migrador\nAPP_TAG=1b207b6c0443\n')
+    c = claves()
+    assert cargar('normal', base) == base.replace('=clave-vieja-app', '=' + c['DB_PASSWORD']).replace(
+        '=clave-vieja-migrador', '=' + c['FLYWAY_PASSWORD'])
+    assert not list(fx.glob('.env.rotacion.*')), 'temporal de .env no retirado'
+    for caso, env_txt, app_txt in [('DB_PASSWORD duplicada', base + 'DB_PASSWORD=otra\n', 'JWT_SECRET=fixture\n'),
+                                   ('sin FLYWAY_PASSWORD', base.replace('FLYWAY_PASSWORD=clave-vieja-migrador\n', ''), 'JWT_SECRET=fixture\n'),
+                                   ('app.env con clave de datasource', base, 'SPRING_DATASOURCE_PASSWORD=x\n')]:
+        assert cargar(caso, env_txt, app_txt, esperado=1) == env_txt, '.env debe quedar intacto'
+
     report={'version':version,'loopback':True,'cluster_nuevo':True,'casos':RESULTS,
             'manifest_sha256':hashlib.sha256((SCRIPTS/'SHA256SUMS').read_bytes()).hexdigest(),
-            'limite':'SQL real, pipeline y lector de respaldo; no ejecuta helpers root ni rotacion/Docker/staging'}
+            'limite':'SQL real, pipeline, lector de respaldo, rotacion y carga de Adrian sobre fixture; '
+                     'no ejecuta root/runuser/Docker ni toca staging'}
     (ROOT/'resultado-regresion.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     print(json.dumps({'resultado':'OK','casos':len(RESULTS),'version':version},ensure_ascii=False))
 finally:

@@ -10,8 +10,8 @@ Línea base: auditoría 22/10/2026 00:07:12 UTC y health 01:04:46 UTC. La column
 | --- | --- | --- | --- |
 | 1 | PostgreSQL accesible | Auditoría ejecutada; API actual UP. | Pendiente: conexión nueva correcta. |
 | 2 | Base correcta | tramites_pruebas. | Pendiente: ambas autenticaciones en esa base. |
-| 3 | App con clave nueva | Sin rotación realizada. | Pendiente: psql -W y pool nuevo. |
-| 4 | Migrador con clave nueva | Sin rotación realizada. | Pendiente: psql -W independiente. |
+| 3 | App con clave nueva | Sin rotación realizada. | Pendiente: conexión nueva TLS con la clave de `/run/novagest-rotacion-staging` y pool nuevo. |
+| 4 | Migrador con clave nueva | Sin rotación realizada. | Pendiente: conexión nueva TLS independiente con la clave del mismo directorio. |
 | 5 | TLS nuevo | Diez sesiones app TLS 1.3 en auditoría. | Pendiente: ambos roles y pool nuevo; registrar versión. |
 | 6 | Propietarios | 67 objetos y una función bajo owner. | Pendiente: comparar inventario y propiedad. |
 | 7 | Historial inalterado | Nueve filas conservadas en reporte. | Pendiente: captura íntegra antes/después idéntica. |
@@ -41,7 +41,7 @@ Desde la copia verificada de root del [paquete de cierre](plan-cierre-staging.md
 bash verificar-staging-final.sh --verificar sha256:ID_DE_64_HEXADECIMALES
 ```
 
-El script exige ID completo válido y una TTY. No reinicia, no rota y no modifica ACL. Solo abre el candado existente para evitar solaparse con Adrián, consulta Docker/health y PostgreSQL de staging y solicita las claves nuevas sin eco para conexiones independientes.
+El script exige el ID completo válido y el directorio de claves de la ventana (`/run/novagest-rotacion-staging`, root 700). No reinicia, no rota y no modifica ACL. Toma el candado existente para no solaparse con Adrián, consulta Docker/health y PostgreSQL de staging, compara en memoria las dos variables del contenedor con las claves fijadas y autentica ambos roles con ellas (`rotar-staging-coordinado.sh comprobar`). Nunca muestra las claves.
 
 ## Criterios verificables
 
@@ -49,7 +49,7 @@ El script exige ID completo válido y una TTY. No reinicia, no rota y no modific
 | --- | --- |
 | Misma imagen | .Image coincide exactamente con el ID anterior a la ventana, no solo current_tag. Adrián aporta topología/volúmenes sin cambios. |
 | API | health UP después de recreación. No sustituye pruebas de autenticación. |
-| Credenciales nuevas | psql -W de migrador y app, sin pgpass/PGPASSWORD heredados, conexión nueva TLS a tramites_pruebas. La prueba local no demuestra por sí sola la ruta Docker. |
+| Credenciales nuevas | El contenedor tiene exactamente las claves fijadas en PostgreSQL (comparación en memoria) y migrador y app autentican con ellas en conexiones nuevas TLS a tramites_pruebas, sin PGPASSWORD heredado. La prueba local no demuestra por sí sola la ruta Docker. |
 | Ruta Docker y pool | Sesiones activas de app desde el contenedor actual, iniciadas después de StartedAt de la recreación y con ssl=t. Registrar versión TLS; si cambia de TLS1.3, investigar antes de cerrar. |
 | SET ROLE / configuración | Entorno del contenedor validado en memoria: Flyway=migrador, datasource=app, INIT_SQLS único SET ROLE tramites_owner y currentSchema=tramites. No imprime URL, claves ni docker inspect completo. |
 | Propietarios | Auditoría específica: los 67 objetos y la función continúan bajo owner. Comparar inventario, no asumirlo por el nombre de usuario. |
