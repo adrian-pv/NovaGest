@@ -1,10 +1,6 @@
-# Plantilla privada (Tailscale) para UN entorno de NovaGest. La renderiza
+# Acceso privado (Tailscale) de UN entorno de NovaGest. La renderiza
 # instalar-nginx-privado.sh; solo se sustituyen las variables en mayusculas.
 # Se enlaza a la IP de Tailscale del servidor, no a todas las interfaces.
-#
-# El backend ya emite nosniff, X-Frame-Options, Referrer-Policy,
-# Permissions-Policy, CSP de la API, Cache-Control y HSTS (bajo HTTPS); aqui no
-# se repiten en las rutas proxeadas. Las cabeceras del frontend van en "/".
 
 server {
     listen ${LISTEN_IP}:${LISTEN_PORT};
@@ -17,50 +13,6 @@ server {
     access_log /var/log/nginx/novagest-${NG_ENTORNO}.access.log;
     error_log /var/log/nginx/novagest-${NG_ENTORNO}.error.log warn;
 
-    # Limite de borde por IP; el backend aplica ademas el suyo y el bloqueo por cuenta.
-    location = /api/auth/login {
-        limit_req zone=novagest_login burst=5 nodelay;
-        limit_req_status 429;
-        proxy_pass http://127.0.0.1:${BACKEND_PORT};
-        include /etc/nginx/snippets/novagest-proxy-headers.conf;
-    }
-
-    # proxy_pass sin sufijo conserva /api y la ruta completa solicitada.
-    location /api/ {
-        proxy_pass http://127.0.0.1:${BACKEND_PORT};
-        include /etc/nginx/snippets/novagest-proxy-headers.conf;
-    }
-
-    location = /actuator/health {
-        proxy_pass http://127.0.0.1:${BACKEND_PORT};
-        include /etc/nginx/snippets/novagest-proxy-headers.conf;
-    }
-
-    # El resto de /actuator no se publica.
-    location /actuator/ {
-        return 404;
-    }
-
-    # Frontend compilado (frontend/dist). Mientras no exista la carpeta responde 404.
-    location / {
-        root ${FRONTEND_ROOT};
-        try_files $uri $uri/ /index.html;
-
-        add_header X-Content-Type-Options "nosniff" always;
-        add_header X-Frame-Options "DENY" always;
-        add_header Referrer-Policy "no-referrer" always;
-        add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
-        # Propuesta para la tarjeta 42 (CSP del frontend); ajustar con desarrollo.
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
-    }
-
-    location = /index.html {
-        root ${FRONTEND_ROOT};
-        add_header Cache-Control "no-cache" always;
-        add_header X-Content-Type-Options "nosniff" always;
-        add_header X-Frame-Options "DENY" always;
-        add_header Referrer-Policy "no-referrer" always;
-        add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
-    }
+    set $novagest_proto $scheme;
+    include /etc/nginx/snippets/novagest-${NG_ENTORNO}-rutas.conf;
 }

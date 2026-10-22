@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Retira el proxy privado de un entorno. Los fragmentos comunes y la espera de
-# Tailscale solo se retiran cuando ya no queda ningun sitio privado de NovaGest.
+# Retira el proxy de un entorno (acceso privado, origen del tunel y sus rutas).
+# Los fragmentos comunes y la espera de Tailscale solo se retiran cuando ya no
+# queda ningun sitio de NovaGest. Antes de retirar el origen del tunel, el tunel
+# de Cloudflare debe apuntar a otro destino o respondera 502.
 # Uso: sudo bash revertir-nginx-privado.sh staging|production
 
 entorno="${1:-}"
@@ -14,10 +16,13 @@ esac
 
 nginx -t -q || { echo "ERROR: nginx -t falla antes de revertir; revisar a mano." >&2; exit 1; }
 
-rm -f -- "/etc/nginx/sites-enabled/novagest-$entorno-privado.conf" \
-         "/etc/nginx/sites-available/novagest-$entorno-privado.conf"
+for sitio in privado tunel; do
+    rm -f -- "/etc/nginx/sites-enabled/novagest-$entorno-$sitio.conf" \
+             "/etc/nginx/sites-available/novagest-$entorno-$sitio.conf"
+done
+rm -f -- "/etc/nginx/snippets/novagest-$entorno-rutas.conf"
 
-if ! compgen -G "/etc/nginx/sites-enabled/novagest-*-privado.conf" > /dev/null; then
+if ! compgen -G "/etc/nginx/sites-enabled/novagest-*.conf" > /dev/null; then
     rm -f -- /etc/nginx/conf.d/novagest-rate-limit.conf \
              /etc/nginx/snippets/novagest-proxy-headers.conf \
              /etc/systemd/system/nginx.service.d/novagest-espera-tailscale.conf
@@ -27,4 +32,4 @@ fi
 
 nginx -t
 systemctl reload nginx
-echo "OK: proxy privado de $entorno retirado. Respaldos previos en /root/novagest-respaldos/."
+echo "OK: proxy de $entorno retirado. Respaldos previos en /root/novagest-respaldos/."

@@ -14,7 +14,8 @@ class Backend(BaseHTTPRequestHandler):
     def do_GET(self):
         body = json.dumps({"path": self.path, "backend": self.server.server_port,
                            "xff": self.headers.get("X-Forwarded-For"),
-                           "xfh": self.headers.get("X-Forwarded-Host")}).encode()
+                           "xfh": self.headers.get("X-Forwarded-Host"),
+                           "xfp": self.headers.get("X-Forwarded-Proto")}).encode()
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -32,10 +33,10 @@ def available_port():
         return sock.getsockname()[1]
 
 
-def request(port, path, method="GET"):
+def request(port, path, method="GET", headers=None):
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
     try:
-        conn.request(method, path, headers={"X-Forwarded-For": "203.0.113.99"})
+        conn.request(method, path, headers={"X-Forwarded-For": "203.0.113.99", **(headers or {})})
         response = conn.getresponse()
         return response.status, dict(response.getheaders()), response.read()
     finally:
@@ -50,30 +51,37 @@ try:
         server = ThreadingHTTPServer(("127.0.0.1", 0), Backend)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         servers.append(server)
-    ports = [available_port(), available_port()]
-    if ports[0] == ports[1]:
+    # Acceso privado de cada entorno y origen del tunel de cada entorno.
+    ports = [available_port() for _ in range(4)]
+    if len(set(ports)) != len(ports):
         raise RuntimeError("Puertos temporales repetidos; volver a ejecutar")
     with tempfile.TemporaryDirectory(prefix="novagest-proxy-test-") as tmp:
         root = Path(tmp)
-        template = (base / "novagest-privado.conf.template").read_text()
+        templates = {name: (base / f"novagest-{name}.conf.template").read_text()
+                     for name in ("rutas", "privado", "tunel")}
         sites = []
         for index, entorno in enumerate(("production", "staging")):
             www = root / f"www-{entorno}"
             www.mkdir()
             (www / "index.html").write_text(f"<!doctype html><title>{entorno}</title>")
-            config = template
             replacements = {
                 "${LISTEN_IP}": "127.0.0.1",
                 "${LISTEN_PORT}": str(ports[index]),
+                "${TUNEL_PORT}": str(ports[2 + index]),
                 "${BACKEND_PORT}": str(servers[index].server_port),
                 "${FRONTEND_ROOT}": str(www),
                 "${NG_ENTORNO}": entorno,
                 "/var/log/nginx/": f"{root}/",
                 "/etc/nginx/snippets/novagest-proxy-headers.conf": str(base / "novagest-proxy-headers.conf"),
+                f"/etc/nginx/snippets/novagest-{entorno}-rutas.conf": str(root / f"rutas-{entorno}.conf"),
             }
-            for old, new_value in replacements.items():
-                config = config.replace(old, new_value)
-            sites.append(config)
+            rendered = {}
+            for name, config in templates.items():
+                for old, new_value in replacements.items():
+                    config = config.replace(old, new_value)
+                rendered[name] = config
+            (root / f"rutas-{entorno}.conf").write_text(rendered["rutas"])
+            sites += [rendered["privado"], rendered["tunel"]]
         (root / "sites.conf").write_text("\n".join(sites))
         (root / "nginx.conf").write_text(
             f"daemon off; worker_processes 1; pid {root}/nginx.pid;\n"
@@ -94,7 +102,7 @@ try:
                     time.sleep(0.1)
             else:
                 raise RuntimeError("Nginx temporal no inició")
-            for index, port in enumerate(ports):
+            for index, port in enumerate(ports[:2]):
                 for path in ("/actuator/health", "/api/tramites?pagina=1"):
                     status, headers, body = request(port, path)
                     data = json.loads(body)
@@ -111,10 +119,24 @@ try:
                     assert status == 200 and b"<title>" in body, (status, body)
                     assert headers["X-Frame-Options"] == "DENY"
                     assert "frame-ancestors 'none'" in headers["Content-Security-Policy"]
+                assert data["xfp"] == "http", data
             statuses = [request(ports[0], "/api/auth/login", "POST")[0] for _ in range(15)]
             assert 200 in statuses and 429 in statuses, statuses
+            # Origen del tunel: IP del visitante desde CF-Connecting-IP y proto https.
+            for index, port in enumerate(ports[2:]):
+                status, headers, body = request(port, "/api/tramites", headers={"CF-Connecting-IP": "198.51.100.20"})
+                data = json.loads(body)
+                assert status == 200 and data["backend"] == servers[index].server_port, (status, body)
+                assert data["xff"] == "198.51.100.20" and data["xfp"] == "https", data
+                assert request(port, "/actuator/env")[0] == 404
+            visitante = {"CF-Connecting-IP": "198.51.100.30"}
+            statuses = [request(ports[3], "/api/auth/login", "POST", visitante)[0] for _ in range(15)]
+            assert 429 in statuses, statuses
+            otro = request(ports[3], "/api/auth/login", "POST", {"CF-Connecting-IP": "198.51.100.31"})[0]
+            assert otro == 200, otro
             print("OK: entornos separados; /api y query preservados; health; /actuator restringido; "
-                  "frontend con fallback SPA y CSP; cabeceras API sin duplicar; XFF saneado; login 429")
+                  "frontend con fallback SPA y CSP; cabeceras API sin duplicar; XFF saneado; login 429; "
+                  "tunel con IP del visitante, proto https y limite por visitante")
         finally:
             if process.poll() is None:
                 process.terminate()

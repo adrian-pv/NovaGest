@@ -1,15 +1,17 @@
 # Nginx para NovaGest
 
-Proxy de NovaGest por entorno (`staging`, `production`): la API (`/api/`, `/actuator/health`) va al backend en loopback y el resto sirve el frontend compilado. La etapa 1 es privada por Tailscale; la publicación en internet espera el dominio (ver [PUBLICACION.md](PUBLICACION.md)).
+Proxy de NovaGest por entorno (`staging`, `production`): la API (`/api/`, `/actuator/health`) va al backend en loopback y el resto sirve el frontend compilado. Hay dos entradas por entorno con las mismas rutas: acceso privado por Tailscale y un origen en loopback para el túnel de Cloudflare que publica el dominio (ver [PUBLICACION.md](PUBLICACION.md)).
 
-| Entorno | Escucha (privado) | Backend | Frontend |
-|---------|-------------------|---------|----------|
-| production | `<IP_PRIVADA>:8082` | `127.0.0.1:8080` | `/var/www/novagest/production` |
-| staging | `<IP_PRIVADA>:8083` | `127.0.0.1:8081` | `/var/www/novagest/staging` |
+| Entorno | Privado (Tailscale) | Origen del túnel | Backend | Frontend |
+|---------|---------------------|------------------|---------|----------|
+| production | `<IP_PRIVADA>:8082` | `127.0.0.1:8182` | `127.0.0.1:8080` | `/var/www/novagest/production` |
+| staging | `<IP_PRIVADA>:8083` | `127.0.0.1:8183` | `127.0.0.1:8081` | `/var/www/novagest/staging` |
 
 ## Archivos
 
-- `novagest-privado.conf.template`: un `server` por entorno. Variables `LISTEN_IP`, `LISTEN_PORT`, `BACKEND_PORT`, `FRONTEND_ROOT`, `NG_ENTORNO`.
+- `novagest-rutas.conf.template` → `/etc/nginx/snippets/novagest-<entorno>-rutas.conf`: rutas comunes del entorno (`BACKEND_PORT`, `FRONTEND_ROOT`).
+- `novagest-privado.conf.template`: `server` privado (`LISTEN_IP`, `LISTEN_PORT`, `NG_ENTORNO`).
+- `novagest-tunel.conf.template`: `server` en `127.0.0.1:TUNEL_PORT` para `cloudflared`. Toma la IP del visitante de `CF-Connecting-IP` solo cuando la conexión viene de `127.0.0.1` y envía `X-Forwarded-Proto: https` al backend.
 - `novagest-proxy-headers.conf` → `/etc/nginx/snippets/`. Envía `Host`, `X-Forwarded-For` (sobrescrito con `$remote_addr`), `X-Forwarded-Proto` y `X-Forwarded-Host`.
 - `novagest-rate-limit.conf` → `/etc/nginx/conf.d/` (zona `novagest_login`, 10/min por IP, ráfaga 5).
 - `systemd/novagest-espera-tailscale.conf` → drop-in de `nginx.service`: arranca después de `tailscaled` y espera hasta 60 s a la IP de `tailscale0` sin bloquear el arranque. Sin esto, si Nginx arranca antes que Tailscale falla el bind y caen también los demás sitios del servidor.
@@ -49,6 +51,8 @@ sudo bash instalar-nginx-privado.sh staging --aplicar
 Guarda un respaldo de `/etc/nginx` en `/root/novagest-respaldos/`, instala los archivos, ejecuta `nginx -t` (si falla restaura y no recarga), recarga Nginx y verifica el health a través del proxy y que el sitio en 443 siga respondiendo igual. Para retirar: `sudo bash revertir-nginx-privado.sh staging`.
 
 Producción se instala igual cuando su backend exista (`PERMITIR_SIN_BACKEND=1` para instalarlo antes; responderá 502).
+
+Para el dominio público añadir `--tunel` (p. ej. `sudo bash instalar-nginx-privado.sh staging --tunel --aplicar`). Instala además el origen en loopback y verifica su health. Después, quien administra el túnel cambia el servicio del nombre público de `http://127.0.0.1:<backend>` a `http://127.0.0.1:<TUNEL_PORT>`. Si el túnel siguiera apuntando directo al backend, el tráfico público se saltaría el frontend, la restricción de `/actuator` y el límite por visitante.
 
 ## Validación sin privilegios
 

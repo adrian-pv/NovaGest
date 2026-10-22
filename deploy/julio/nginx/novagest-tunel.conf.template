@@ -1,0 +1,23 @@
+# Origen local para un tunel de Cloudflare de UN entorno de NovaGest. Escucha
+# solo en loopback: el unico cliente previsto es cloudflared en este servidor.
+# El tunel debe apuntar a http://127.0.0.1:${TUNEL_PORT} en lugar de al backend,
+# para que el trafico publico pase por las mismas rutas, limites y frontend.
+
+server {
+    listen 127.0.0.1:${TUNEL_PORT};
+    server_name _;
+
+    server_tokens off;
+    client_max_body_size 7m;
+
+    access_log /var/log/nginx/novagest-${NG_ENTORNO}-tunel.access.log;
+    error_log /var/log/nginx/novagest-${NG_ENTORNO}-tunel.error.log warn;
+
+    # IP real del visitante: solo se acepta CF-Connecting-IP de cloudflared local.
+    set_real_ip_from 127.0.0.1;
+    real_ip_header CF-Connecting-IP;
+
+    # Cloudflare termina TLS; hacia el backend la solicitud original es HTTPS.
+    set $novagest_proto https;
+    include /etc/nginx/snippets/novagest-${NG_ENTORNO}-rutas.conf;
+}

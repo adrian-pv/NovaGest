@@ -12,13 +12,19 @@ mkdir -p "$tmp_dir/conf" "$tmp_dir/snippets"
 cp "$base_dir/novagest-proxy-headers.conf" "$tmp_dir/snippets/novagest-proxy-headers.conf"
 
 # Renderizar solo variables de la plantilla para no alterar variables propias de nginx.
+variables='${LISTEN_IP} ${LISTEN_PORT} ${TUNEL_PORT} ${BACKEND_PORT} ${FRONTEND_ROOT} ${NG_ENTORNO}'
 for entorno in production staging; do
-    case "$entorno" in production) puerto=18082 ;; staging) puerto=18083 ;; esac
-    LISTEN_IP=127.0.0.1 LISTEN_PORT="$puerto" BACKEND_PORT=1 \
-    FRONTEND_ROOT="$tmp_dir/www-$entorno" NG_ENTORNO="$entorno" \
-        envsubst '${LISTEN_IP} ${LISTEN_PORT} ${BACKEND_PORT} ${FRONTEND_ROOT} ${NG_ENTORNO}' \
-        < "$base_dir/novagest-privado.conf.template" \
-        > "$tmp_dir/conf/novagest-$entorno.conf"
+    case "$entorno" in
+        production) export LISTEN_PORT=18082 TUNEL_PORT=18182 ;;
+        staging)    export LISTEN_PORT=18083 TUNEL_PORT=18183 ;;
+    esac
+    export LISTEN_IP=127.0.0.1 BACKEND_PORT=1 FRONTEND_ROOT="$tmp_dir/www-$entorno" NG_ENTORNO="$entorno"
+    envsubst "$variables" < "$base_dir/novagest-rutas.conf.template" \
+        > "$tmp_dir/snippets/novagest-$entorno-rutas.conf"
+    for sitio in privado tunel; do
+        envsubst "$variables" < "$base_dir/novagest-$sitio.conf.template" \
+            > "$tmp_dir/conf/novagest-$entorno-$sitio.conf"
+    done
 done
 
 cat > "$tmp_dir/nginx.conf" <<EOF
@@ -34,7 +40,7 @@ http {
 EOF
 
 # Ajustar los includes absolutos de snippets para que apunten al arbol temporal.
-sed -i -e "s|/etc/nginx/snippets/novagest-proxy-headers.conf|$tmp_dir/snippets/novagest-proxy-headers.conf|g" \
-    -e "s|/var/log/nginx/|$tmp_dir/|g" "$tmp_dir"/conf/*.conf
+sed -i -e "s|/etc/nginx/snippets/|$tmp_dir/snippets/|g" \
+    -e "s|/var/log/nginx/|$tmp_dir/|g" "$tmp_dir"/conf/*.conf "$tmp_dir"/snippets/*-rutas.conf
 
 "$nginx_bin" -t -p "$tmp_dir/" -c "$tmp_dir/nginx.conf"
