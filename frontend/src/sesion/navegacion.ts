@@ -20,6 +20,7 @@ export const ITEMS_MENU: ItemMenu[] = [
   { ruta: '/', etiqueta: 'Inicio' },
   { ruta: '/panel', etiqueta: 'Mi panel', requiereSesion: true },
   { ruta: '/bandeja', etiqueta: 'Bandeja', permiso: 'tramite:leer', alcanceTotal: true },
+  { ruta: '/pagos', etiqueta: 'Pagos pendientes', permiso: 'pago:editar', alcanceTotal: true },
   { ruta: '/tramites', etiqueta: 'Trámites', permiso: 'tramite:leer' },
   { ruta: '/tipos', etiqueta: 'Tipos de trámite', permiso: 'tipo_tramite:editar' },
   { ruta: '/usuarios', etiqueta: 'Usuarios', permiso: 'usuario:leer' },

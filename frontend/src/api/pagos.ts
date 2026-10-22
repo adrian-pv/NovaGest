@@ -5,6 +5,13 @@ import type { EstadoTramite } from './tramites'
 export type EstadoPago = 'PENDIENTE' | 'VALIDADO' | 'RECHAZADO'
 export type DecisionPago = 'VALIDAR' | 'RECHAZAR'
 
+export function listarPagosPendientes(page: number, senal?: AbortSignal): Promise<Pagina<Pago>> {
+  return solicitar<Pagina<Pago>>('/api/pagos', {
+    consulta: { estado: 'PENDIENTE', page, sort: 'creadoEn,asc' },
+    senal,
+  })
+}
+
 export function resolverPago(
   id: number,
   decision: DecisionPago,
