@@ -2,6 +2,8 @@
 
 **Preparada, sin ejecutar. Requiere autorización del usuario antes de modificar PostgreSQL.** No es una migración Flyway ni habilita producción.
 
+Secuencia completa: [plan único de cierre](plan-cierre-staging.md). Paquete de ejecución: [corregir-historial-staging.sh](scripts/corregir-historial-staging.sh); no se ejecutó durante la preparación.
+
 La auditoría del 21/10 18:07 America/Mexico_City encontró `tramites_app` con SELECT/INSERT/UPDATE/DELETE sobre `tramites.flyway_schema_history`. La app no necesita modificar la tabla que acredita las migraciones. Sus permisos sobre tablas de negocio y secuencias están fuera de esta corrección.
 
 Se buscó `flyway_schema_history` en src/main: no hay consultas del código de aplicación a esa tabla. Compose proporciona SPRING_FLYWAY_USER por separado. Por mínimo privilegio se propone retirar **todos los privilegios directos de la app sobre esa única tabla**, incluido SELECT, y conservar acceso mediante el migrador/owner. Si el equipo acredita un consumidor que necesite leer el historial, puede acordarse una variante de SELECT sin escritura; no se presume esa necesidad.
@@ -55,3 +57,25 @@ Esto conserva todos los permisos del migrador/owner y no cambia otras tablas ni 
 - Los default privileges del owner conceden DML a la app en todas las tablas nuevas. Al crear por primera vez el historial de otro entorno podría repetirse el problema. Documentar una excepción explícita en el procedimiento de despliegue; no modificar producción ahora ni quitar DML por defecto a todas las tablas de negocio.
 
 No se preparan ALTER OWNER porque los propietarios ya son correctos. Las propuestas de CHECK de V11 y los cambios de concurrencia son trabajos independientes, sujetos a su propio PR y autorización.
+
+## Procedimiento exacto preparado
+
+Tras autorizar respaldo/REVOKE y copiar/verificar el paquete en root:
+
+```bash
+bash corregir-historial-staging.sh --aplicar
+```
+
+El script toma el candado existente de staging; crea una carpeta privada de root con umask 077; guarda ACL previa, pg_dump custom de **solo la tabla de historial**, índice legible con pg_restore --list, las nueve filas y una captura agregada de conteos/privilegios de negocio y secuencias. Un índice de respaldo legible no equivale a una restauración ensayada: no se crea otra base para probarlo sin autorización.
+
+Solo después de ese respaldo ejecuta [revocar-historial-staging.sql](scripts/revocar-historial-staging.sql). Si falla antes de COMMIT, la conexión termina y PostgreSQL revierte la transacción. Tras COMMIT no restaura privilegios ni datos automáticamente: cualquier falla posterior deja el estado para investigar, con el respaldo conservado y Deploy pausado.
+
+Después ejecuta la [guardia de solo lectura](scripts/guardia-historial-staging.sql). Verifica ausencia efectiva de todos los permisos de app, capacidad del migrador, nueve versiones/checksums y tres EXPLAIN sin ANALYZE de escritura: cada uno debe ser rechazado con SQLSTATE 42501. No inserta/modifica/borra filas para probar permisos. Lee conteos de pago y tipo_cambio como app y compara la captura completa de negocio/secuencias y el historial anterior/posterior. Si hay diferencias, investigar actividad concurrente; no borrar datos ni restaurar una base para resolver un GRANT.
+
+La recuperación posterior a COMMIT consiste, solo si se justifica y autoriza, en el GRANT acotado del estado anterior indicado arriba. No usar pg_restore como forma de revertir un permiso: el dump queda como respaldo de seguridad; restaurarlo afectaría datos y requeriría otra decisión.
+
+## Evitar regresiones
+
+Compose no ejecuta GRANT por sí mismo y los default privileges no se reaplican a tablas existentes durante un reinicio. El riesgo reaparece si alguien recrea/restaura el historial o aplica GRANT general sobre todas las tablas. No se cambian los defaults de todas las tablas de negocio para resolver esta excepción.
+
+La guardia queda preparada para ejecutarse después del REVOKE, después de la recreación coordinada y en futuros despliegues antes de aceptarlos como sanos. Si reaparecen permisos, devuelve error y el cierre se bloquea. Adrián/Ernesto deben acordar e integrar ese control en su procedimiento de despliegue; **no se afirma que el workflow ya lo ejecute** y no se modificó tramites-ctl ni el servidor durante esta preparación. Toda restauración o GRANT amplio requiere revisar esta excepción. Flyway conserva su usuario separado, con SET ROLE al owner, según Compose y la confirmación actual de Adrián.

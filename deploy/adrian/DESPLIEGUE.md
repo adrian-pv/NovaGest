@@ -43,7 +43,7 @@ manual ─────► tramites-ctl rollback <entorno>
 
 ## Base de datos (decisión del DBA)
 
-Lo que entregó el DBA para pruebas: PostgreSQL 18 en daniel1, base `tramites_pruebas`, esquema `tramites`, dueño `tramites_owner`, migraciones con `tramites_migrador` y la app con `tramites_app`. Producción: pendiente.
+Estado de staging al 21/10/2026: API UP, esquema `tramites`, 67 objetos bajo `tramites_owner`, nueve migraciones exitosas y checksums V9/V10 correctos. Flyway autentica como `tramites_migrador` y hace `SET ROLE tramites_owner`; la aplicación usa `tramites_app`. La configuración activa fue confirmada por Adrián. El [plan de cierre DBA](../../docs/dba/plan-cierre-staging.md) prevalece para la ventana de seguridad; no volver a preparar bases, redes o esquemas ya configurados. Producción no está autorizada en este cierre.
 
 | Variable (`/opt/tramites/<entorno>/.env`) | Pruebas |
 | --- | --- |
@@ -54,20 +54,22 @@ Lo que entregó el DBA para pruebas: PostgreSQL 18 en daniel1, base `tramites_pr
 | `FLYWAY_USER` / `FLYWAY_PASSWORD` | `tramites_migrador` (Flyway migra con este; también se usa para el respaldo previo) |
 | `NET_BRIDGE` / `NET_SUBNET` | `br-nova-stg` / `172.30.11.0/24` (producción: `br-nova-prd` / `172.30.12.0/24`) |
 
-Lo que debe dejar el DBA (una vez por base):
+Modelo ya configurado, documentado como referencia; **no ejecutar de nuevo durante este cierre**:
 
 ```sql
 -- El backend no fija esquema: que ambos usuarios trabajen en "tramites"
 ALTER ROLE tramites_app      IN DATABASE tramites_pruebas SET search_path = tramites;
 ALTER ROLE tramites_migrador IN DATABASE tramites_pruebas SET search_path = tramites;
--- Lo que cree el migrador lo puede usar la app (sin poder cambiar el esquema)
-ALTER DEFAULT PRIVILEGES FOR ROLE tramites_migrador IN SCHEMA tramites
+-- Flyway hace SET ROLE al dueño antes de crear: los defaults corresponden al dueño efectivo.
+ALTER DEFAULT PRIVILEGES FOR ROLE tramites_owner IN SCHEMA tramites
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO tramites_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE tramites_migrador IN SCHEMA tramites
+ALTER DEFAULT PRIVILEGES FOR ROLE tramites_owner IN SCHEMA tramites
   GRANT USAGE, SELECT ON SEQUENCES TO tramites_app;
 ```
 
-(Si el migrador crea los objetos como `tramites_owner` con `SET ROLE`, el `FOR ROLE` va con ese rol.)
+El migrador es miembro del owner con INHERIT/SET. `app.env` conserva un único `SPRING_FLYWAY_INIT_SQLS=SET ROLE tramites_owner` y el datasource usa `currentSchema=tramites`. `SPRING_FLYWAY_USER` y `SPRING_FLYWAY_PASSWORD` llegan desde `environment:` de Compose, con FLYWAY_USER/FLYWAY_PASSWORD de `.env`; Adrián retiró sus duplicados de `app.env`.
+
+Excepción de mínimo privilegio pendiente de autorización: la app no necesita acceso a `tramites.flyway_schema_history`. Los defaults de negocio también alcanzaron esa tabla al crearla. La [corrección acotada](../../docs/dba/correccion-permisos-historial.md) y la [guardia posterior](../../docs/dba/scripts/guardia-historial-staging.sql) están preparadas, sin ejecutar. No quitar permisos a todas las tablas de negocio. Repetir la guardia después de la recreación y de futuros despliegues/restauraciones/GRANT; integrarla en el procedimiento requiere revisión del equipo y no se considera ya activa en el workflow.
 
 `pg_hba.conf`, solo desde la red del contenedor:
 
@@ -83,14 +85,16 @@ Firewall de daniel1 (`/opt/navcontrol/firewall.nft`, servicio `navcontrol-firewa
 iifname "br-*" ip saddr 172.30.11.0/24 ip daddr 172.17.0.1 tcp dport 5432 counter accept
 ```
 
-Para producción falta agregar `172.30.12.0/24` (por ejemplo `ip saddr { 172.30.11.0/24, 172.30.12.0/24 }`), validar con `nft -c -f` y reiniciar `navcontrol-firewall`.
+Las referencias de preparación de otros entornos no son instrucciones para este cierre. No modificar firewall compartido, NavControl ni producción; cualquier verificación o cambio de esos entornos requiere su propio procedimiento y autorización.
 
 Además:
 
-- **V9 y V10 son borradores:** no aprobar producción hasta que el DBA las revise (es revisor del environment `production`).
+- **V9 y V10 ya se aplicaron en staging:** no editarlas. El dictamen continúa CAMBIOS REQUERIDOS ANTES DEL CIERRE por seguridad pendiente y evidencia posterior; las mejoras de esquema se proponen como V11 separada. No afirmar que el DBA sea revisor obligatorio hasta comprobar/configurar ese control en GitHub.
 - **Respaldo:** `tramites-ctl` hace `pg_dump` con el usuario de migraciones antes de cada despliegue a producción. Si falla, no despliega.
 
 ## Poner en marcha
+
+Esta sección describe instalación genérica/histórica. **No ejecutar setup-server, editar otros entornos ni hacer docker login como parte de la ventana actual.** Staging ya funciona y Deploy está pausado. La rotación vigente es [migrador→app en una ventana](../../docs/dba/rotacion-staging-coordinada.md): DBA cambia claves sin editar archivos/reiniciar; Adrián actualiza ambas variables y recrea una vez con el mismo ID de imagen. `docker restart` no recarga variables; `tramites-ctl deploy` hace pull, por lo que el paso de conservación de imagen debe revisarlo Adrián según el plan. Mantener la red Compose; no fusionar #84.
 
 1. **Actualizar el servidor** (en daniel1, con tu usuario y sudo). Ya está preparado de la vez anterior; esto instala la versión nueva y migra los `.env` sin perder nada:
 
@@ -138,7 +142,7 @@ Además:
 
 **Ya probado en un entorno de prueba con Docker y Compose reales** (imagen simulada que respeta el contrato): despliegue a pruebas y producción en `127.0.0.1:8081` / `127.0.0.1:8080`, escritura en el volumen de comprobantes como usuario sin privilegios, `pg_dump` previo a producción (y bloqueo si falla), reversión automática ante una versión que no arranca, rollback manual, `status`, rechazo de `DB_HOST=localhost` y actualización de un `.env` del formato anterior.
 
-**Falta probar con el backend real:** construir la imagen en Actions, la conexión a la base del DBA y Flyway.
+**Backend real ya validado en staging:** salud, conexión, propietarios, historial y checksums acreditados por la auditoría de solo lectura. Pendientes de esta ventana: ACL del historial, rotación coordinada y verificación posterior. Las pruebas opcionales de Nginx/usuario funcional se documentan aparte; los checks existentes no autorizan producción.
 
 ## Rollback y migraciones
 

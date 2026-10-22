@@ -4,6 +4,10 @@ Fecha: 21 de octubre de 2026 (America/Mexico_City). Responsable de revisión: `h
 Base de código: `develop` en `ae014ddc8ea654a3d5e71e510755f1c363feccda`.
 Seguimiento: [issue #87 — Aprobación DBA: migraciones V9 y V10](https://github.com/ernestosantizo2003/NovaGest/issues/87).
 
+Cierre operativo actualizado: [plan consolidado](plan-cierre-staging.md), [rotación coordinada](rotacion-staging-coordinada.md) y [verificación final](verificacion-final-staging.md). Adrián y el usuario confirmaron SET ROLE único activo, variables Flyway solo en .env/Compose y currentSchema=tramites. Esa configuración no se modifica desde los scripts DBA. La rotación se limita a migrador→app en una ventana y Adrián recrea una sola vez con la misma imagen. No hay autorización para ejecutarla.
+
+Separación del dictamen: seguridad del historial y claves expuestas bloquean el cierre de seguridad; integridad adicional de V9 y posible catálogo de V10 son mejoras a aceptar/documentar o plantear en V11; las carreras pertenecen al equipo de aplicación. Las condiciones y evidencias faltantes están enumeradas en el plan. No se convierte una propuesta de mejora en una afirmación de datos inválidos existentes.
+
 **Auditoría completada. Propuesta de dictamen: CAMBIOS REQUERIDOS en privilegios del historial Flyway antes de producción.** No registra una aprobación definitiva ni autoriza despliegues o correcciones.
 V9/V10 son estructuralmente compatibles con JPA y con el catálogo observado, con las observaciones detalladas abajo. La propiedad y los checksums son correctos. El hallazgo pendiente es que `tramites_app` puede escribir en `flyway_schema_history`.
 
