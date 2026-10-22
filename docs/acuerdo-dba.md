@@ -29,7 +29,8 @@ La aprobación del DBA y la revisión del PR deben quedar registradas con nombre
 La URL es jdbc:postgresql://<host>:<puerto>/<base>. Ver .env.example y src/main/resources/application*.properties.
 No guardar credenciales en este documento, Notion, commits ni capturas.
 En prod se deben proporcionar todas las variables de conexión; test usa Testcontainers.
-Compose y las pruebas usan PostgreSQL 17; DBA debe confirmar compatibilidad del entorno.
+Compose usa PostgreSQL 17; las pruebas de Testcontainers usan postgres:latest (ver TestcontainersConfiguration.java).
+Por tanto, las pruebas no garantizan compatibilidad específica con PostgreSQL 17; DBA debe confirmar la versión del entorno y acordar una versión fija para las pruebas.
 El Compose actual crea el usuario con POSTGRES_USER para desarrollo: no constituye evidencia de mínimo privilegio.
 
 ## Migraciones y modelo entregado
