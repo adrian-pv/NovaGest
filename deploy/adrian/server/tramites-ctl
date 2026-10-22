@@ -62,15 +62,29 @@ envval() { grep -E "^$1=" "$DIR/.env" | tail -n1 | cut -d= -f2- || true; }
 # La imagen de NovaGest no trae curl ni HEALTHCHECK: la salud se comprueba desde el host,
 # por el mismo puerto loopback que usa Nginx (contrato: GET /actuator/health -> "UP").
 wait_healthy() {
-  local cid state port waited=0
+  # Sana = el contenedor "app" que corre es EXACTAMENTE la imagen de la etiqueta pedida
+  # y /actuator/health responde UP. Si no se comprobara la identidad, un "up" fallido que deja
+  # vivo el contenedor anterior daría UP y se registraría una versión que no está corriendo.
+  local tag="$1" expected cids cid img state port waited=0
   port="$(envval APP_PORT)"
-  cid="$("${COMPOSE[@]}" ps -q app)"
-  [[ -n "$cid" ]] || return 1
+  expected="$(docker image inspect -f '{{.Id}}' "$(envval APP_IMAGE):$tag" 2>/dev/null || true)"
+  [[ -n "$expected" ]] || { log "la imagen $tag no existe localmente"; return 1; }
   while (( waited < HEALTH_TIMEOUT )); do
+    cids="$("${COMPOSE[@]}" ps -q app 2>/dev/null || true)"
+    if [[ $(grep -c . <<<"$cids") -ne 1 ]]; then
+      sleep 5; waited=$((waited + 5)); continue
+    fi
+    cid="$cids"
+    img="$(docker inspect -f '{{.Image}}' "$cid" 2>/dev/null || true)"
+    if [[ "$img" != "$expected" ]]; then
+      log "el contenedor app corre otra imagen (${img:-ninguna}), no la de $tag"
+      return 1
+    fi
     state="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo missing)"
     case "$state" in exited|dead|missing) return 1 ;; esac
     if curl -fsS --max-time 3 "http://127.0.0.1:${port}/actuator/health" 2>/dev/null | grep -q '"status":"UP"'; then
-      return 0
+      # Confirmación final: sigue siendo el mismo contenedor, con la misma imagen y corriendo.
+      [[ "$(docker inspect -f '{{.Image}} {{.State.Status}}' "$cid" 2>/dev/null)" == "$expected running" ]] && return 0
     fi
     sleep 5; waited=$((waited + 5))
   done
@@ -121,7 +135,7 @@ deploy_tag() {
   # para que, si no queda sana, se active la reversión automática a la versión anterior.
   "${COMPOSE[@]}" up -d --remove-orphans || log "compose up terminó con error; se verifica salud y, si falla, se revierte"
 
-  if wait_healthy; then
+  if wait_healthy "$tag"; then
     if [[ "$before" != "$tag" ]]; then
       [[ -n "$before" ]] && echo "$before" >"$DIR/previous_tag"
       echo "$tag" >"$DIR/current_tag"
@@ -139,7 +153,7 @@ deploy_tag() {
     log "Volviendo automáticamente a $before"
     export APP_TAG="$before"
     "${COMPOSE[@]}" up -d --remove-orphans || log "compose up de la reversión terminó con error"
-    if wait_healthy; then
+    if wait_healthy "$before"; then
       audit "reversión automática OK $before"
       log "Se restauró $before."
     else
