@@ -1,107 +1,102 @@
-# Guion de demostracion (10 minutos)
+# Guion de demostración por pantallas (10 minutos)
 
-Tarjeta 43 · Recorre el flujo completo de un tramite con los usuarios de la tarjeta 24.
-Version API: mientras no exista el frontend (tarjetas 33 a 36) la demo se hace en Swagger UI.
-Cuando existan las pantallas, cada paso tiene marcado que pantalla usar.
+Tarjeta 43. Usa las cuentas demo de la tarjeta 24 y las pantallas de las tarjetas 30, 32 y 33–36.
+El tiempo es una propuesta para ensayar; no se afirma haber realizado un ensayo cronometrado.
+El guion anterior del PR #67 era una demostración de API. Esta versión usa el frontend y reserva Swagger para evidenciar permisos y bitácora.
 
-> Probado el 19/10/2026 contra `docker compose up --build` (perfil dev): los 14 pasos responden como dice el guion.
+## Preparación
 
-## Antes de la demo (5 minutos, sin publico)
-
-1. Docker Desktop encendido y `.env` completo, incluido `DEMO_PASSWORD`.
-2. Empezar con la base limpia para que los ids y la bitacora se vean ordenados:
-   ```
-   docker compose down -v
-   docker compose up --build
-   ```
-3. Esperar `Started NovaGestApplication` y abrir:
-   - Swagger: http://localhost:8080/swagger-ui.html
-   - Salud: http://localhost:8080/actuator/health (debe decir `UP`)
-4. Tener a mano un comprobante de prueba (PDF, JPG o PNG de menos de 5 MB, con datos ficticios).
-5. Opcional: dejar abiertas cuatro pestanas de Swagger, una por usuario, para no cambiar de token en vivo.
-
-Usuarios (clave = valor de `DEMO_PASSWORD` del `.env`):
+1. En local, completa .env según el README, incluido DEMO_PASSWORD, y ejecuta docker compose up --build.
+2. En otra terminal, desde frontend/, ejecuta npm ci y npm run dev (en PowerShell: npm.cmd).
+3. Comprueba http://localhost:8080/actuator/health y abre http://localhost:5173.
+4. Prepara un comprobante PDF, JPG o PNG real de hasta 5 MB con datos ficticios.
+5. Usa sesiones de navegador separadas por rol o cierra sesión antes de cambiar de cuenta. Las pestañas no son una garantía de aislamiento si se duplican con almacenamiento de sesión.
+6. Usa registros nuevos para el ensayo. No es necesario borrar los volúmenes ni los datos anteriores.
+7. Para cobrar un monto distinto de cero, el administrador debe configurarlo en el tipo. Ornato e IGSS parten de Q0.00.
 
 | Rol | Correo |
-|---|---|
-| Ciudadano | `ciudadano@novagest.test` |
-| Gestor | `gestor@novagest.test` |
-| Auditor | `auditor@novagest.test` |
-| Administrador | `administrador@novagest.test` |
+| --- | --- |
+| Ciudadano | ciudadano@novagest.test |
+| Gestor | gestor@novagest.test |
+| Auditor | auditor@novagest.test |
+| Administrador | administrador@novagest.test |
 
-Como entrar en Swagger con un usuario: `POST /api/auth/login` con
-`{ "correo": "...", "clave": "..." }`, copiar el `accessToken` y pegarlo en **Authorize**.
+La contraseña es el valor local de DEMO_PASSWORD; nunca mostrarla en pantalla ni registrarla en el manual.
+Si la cuenta está bloqueada, esperar 15 minutos o desbloquearla con el administrador.
 
-## Guion
+## Recorrido
 
-| Min | Quien | Paso | En Swagger | Que se dice / que se ve |
-|---|---|---|---|---|
-| 0:00 | Presentador | Contexto | — | NovaGest permite que un ciudadano haga su tramite sin ir a ventanilla. Cuatro roles; cada uno ve solo lo que le toca. |
-| 0:45 | Ciudadano | 1. Iniciar sesion | `POST /api/auth/login` | Devuelve dos tokens (acceso de 15 min y renovacion). C-01. |
-| 1:15 | Ciudadano | 2. Ver tipos de tramite | `GET /api/tipos-tramite` | Ornato, IGSS y Constancia de residencia; cada tipo declara sus propios campos. |
-| 1:45 | Ciudadano | 3. Crear boleto de ornato | `POST /api/tramites` | Cuerpo de ejemplo abajo. Queda en `BORRADOR`. |
-| 2:30 | Ciudadano | 4. Enviar | `POST /api/tramites/{id}/transiciones` con `ENVIADO` | Solo el dueno puede enviarlo. |
-| 3:00 | Gestor | 5. Ver la bandeja | `GET /api/tramites?estado=ENVIADO` | El gestor ve los tramites de todos; el ciudadano solo los suyos (C-03). |
-| 3:30 | Gestor | 6. Tomarlo en revision | transicion `EN_REVISION` | Queda asignado como gestor del tramite. |
-| 4:00 | Gestor | 7. Observarlo | transicion `OBSERVADO` sin comentario, y luego con comentario | Primero responde **400**: el comentario es obligatorio. Luego pasa con `"La direccion esta incompleta"`. |
-| 5:00 | Ciudadano | 8. Corregir y reenviar | `PUT /api/tramites/{id}` y transicion `EN_REVISION` | Solo puede editar en Borrador u Observado. |
-| 5:45 | Gestor | 9. Aprobar revision | transicion `POR_PAGAR` | Ya se puede pagar. |
-| 6:15 | Ciudadano | 10. Subir comprobante | `POST /api/tramites/{id}/pagos` (archivo `comprobante`) | Pago en `PENDIENTE`. Solo PDF, JPG o PNG reales, maximo 5 MB. |
-| 7:00 | Ciudadano | 11. Intentar validar su propio pago | `POST /api/pagos/{id}/validacion` | **403**: quien paga no valida (C-04, segregacion de funciones). |
-| 7:30 | Gestor | 12. Validar el pago | `POST /api/pagos/{id}/validacion` con `VALIDAR` | El pago queda `VALIDADO` y el tramite pasa solo a `FINALIZADO`. |
-| 8:15 | Ciudadano | 13. Ver historial | `GET /api/tramites/{id}/historial` | 7 movimientos, de BORRADOR a FINALIZADO, con quien y cuando (C-06). |
-| 8:45 | Auditor | 14. Revisar la bitacora | `GET /api/bitacora?recurso=tramite` | Cada creacion, edicion y transicion con antes y despues (C-05). Intentar una transicion como auditor da **403**: solo lectura. |
-| 9:30 | Presentador | Cierre | — | Resumen: flujo completo, tres permisos denegados demostrados, todo queda en historial y bitacora. |
+| Minuto | Rol | Pantalla y acción | Resultado que se demuestra |
+| --- | --- | --- | --- |
+| 0:00 | Presentador | Abrir Inicio | Cuatro roles y separación de permisos |
+| 0:45 | Ciudadano | /ingresar → Iniciar sesión | Mi panel muestra la cuenta y sus capacidades |
+| 1:15 | Ciudadano | Trámites → Nuevo trámite → Boleto de ornato | Formulario según los campos del tipo |
+| 1:45 | Ciudadano | Completar datos ficticios y guardar | Detalle en Borrador; anotar el número real |
+| 2:15 | Ciudadano | Enviar trámite | Estado Enviado e historial actualizado |
+| 2:45 | Gestor | Bandeja → Por tomar → abrir el número anotado | Lista de todos los ciudadanos, ordenada por antigüedad |
+| 3:15 | Gestor | Tomar para revisión → Observar | Comentario obligatorio; confirmar “La dirección está incompleta” |
+| 4:00 | Ciudadano | Abrir trámite Observado → Editar | Corregir dirección, guardar y Enviar corrección |
+| 4:45 | Gestor | Bandeja → En revisión → detalle → Aprobar y pasar a pago | Estado Por pagar |
+| 5:30 | Ciudadano | Detalle → Pago → Subir comprobante | Pago Pendiente; no ofrece validación |
+| 6:15 | Gestor | Bandeja → Esperando pago → detalle → Descargar comprobante | El gestor puede revisar el archivo |
+| 6:45 | Gestor | Validar pago → Confirmar validación | Pago Validado; trámite Finalizado; historial actualizado |
+| 7:30 | Ciudadano | Consultar detalle e Historial | Ver el recorrido completo y quién actuó |
+| 8:00 | Auditor | Trámites → detalle | Datos e historial consultables; sin botones de escritura |
+| 8:30 | Auditor | Swagger → GET /api/bitacora?recurso=tramite | Evidencia de antes/después y actores |
+| 9:15 | Administrador | Usuarios y Roles | Asignación de roles y permisos visibles |
+| 9:45 | Presentador | Mostrar las evidencias | Propiedad del dato, segregación e historial |
 
-### Cuerpos de ejemplo
+El historial de este recorrido contiene siete movimientos si no se repiten acciones.
+Los estados y los identificadores se leen de la aplicación; no se presupone que el trámite tenga id 1.
 
-Crear el tramite (paso 3). Usar el `id` de "Boleto de ornato" que devolvio el paso 2:
-```json
-{
-  "tipoId": 1,
-  "datos": {
-    "dpi": "1234567890101",
-    "ocupacion": "Tecnico",
-    "ingreso_mensual": 4500,
-    "direccion": "Santa Lucia Cotzumalguapa"
-  }
-}
-```
+### Datos ficticios para el ornato
 
-Transiciones (pasos 4, 6, 7, 8 y 9):
-```json
-{ "estadoDestino": "ENVIADO" }
-{ "estadoDestino": "OBSERVADO", "comentario": "La direccion esta incompleta" }
-```
+- DPI: 1234567890101.
+- Ocupación: Técnico.
+- Ingreso mensual: 4500.
+- Dirección inicial: Santa Lucía Cotzumalguapa.
+- Dirección corregida: Colonia Alamedas, Santa Lucía Cotzumalguapa, Escuintla.
 
-Correccion (paso 8):
-```json
-{
-  "datos": {
-    "dpi": "1234567890101",
-    "ocupacion": "Tecnico",
-    "ingreso_mensual": 4500,
-    "direccion": "Colonia Alamedas, Santa Lucia Cotzumalguapa, Escuintla"
-  }
-}
-```
+Respeta los campos que presente el tipo actual. Si un administrador cambió su definición, adapta estos datos.
 
-Validacion del pago (pasos 11 y 12):
-```json
-{ "decision": "VALIDAR" }
-```
+## Variante: comprobante rechazado
 
-## Si algo sale mal en vivo
+Antes de validar, usa **Rechazar pago**:
+1. Comprueba que **Confirmar rechazo** está deshabilitado sin motivo.
+2. Escribe “El comprobante no es legible” y confirma.
+3. El ciudadano ve el motivo, el trámite sigue Por pagar y puede subir otro comprobante.
+4. Regresa como gestor y valida el nuevo pendiente.
 
-| Sintoma | Causa probable | Que hacer |
-|---|---|---|
-| 401 en cualquier llamada | Token vencido (dura 15 min) | Volver a hacer login y pegar el token nuevo en Authorize |
-| 401 en el login | Clave distinta a `DEMO_PASSWORD`, o cuenta bloqueada tras 5 fallos | Revisar el `.env`; si se bloqueo, `docker compose down -v` y levantar de nuevo |
-| 409 en una transicion | El tramite no esta en el estado esperado | Ver `GET /api/tramites/{id}`: `destinosPosibles` dice a donde puede ir |
-| 400 al subir el comprobante | Archivo que no es PDF/JPG/PNG real o pesa mas de 5 MB | Usar el comprobante de prueba preparado |
+Un pago resuelto deja de ofrecer decisiones. Si dos gestores deciden a la vez, uno recibe conflicto y debe actualizar el estado.
 
-## Pendiente para la version con frontend
+## Evidencia de permisos desde Swagger (dev)
 
-- [ ] Reemplazar la columna "En Swagger" por la pantalla de cada paso (tarjetas 33 a 36).
-- [ ] Agregar capturas de cada paso en `docs/manual/capturas/`.
-- [ ] Cronometrar un ensayo completo y ajustar los minutos.
+El frontend oculta acciones no autorizadas. Para demostrar que la API también las rechaza:
+1. Inicia sesión como ciudadano mediante POST /api/auth/login y usa su accessToken en Authorize.
+2. Intenta `POST /api/pagos/<id>/validacion` con `{"decision":"VALIDAR"}` sobre un pago pendiente: espera 403.
+3. Con un segundo ciudadano, intenta `GET /api/tramites/<id>` de la primera cuenta: espera 404.
+4. Como auditor intenta una transición: espera 403. Sus consultas de lectura sí deben funcionar.
+
+No proyectes la respuesta del login con los tokens. Usa registros ficticios y el perfil dev; Swagger está apagado en prod.
+
+## Problemas durante la demostración
+
+| Situación | Acción |
+| --- | --- |
+| No conecta | Revisar API, proxy de Vite y /actuator/health |
+| Sesión vencida | Volver a iniciar sesión y comprobar el resultado antes de repetir |
+| Cuenta bloqueada | Esperar o desbloquear con el administrador; no borrar la base |
+| Conflicto al resolver pago | Actualizar el estado del pago y revisar la decisión ya tomada |
+| Archivo no aceptado | Comprobar formato real y límite de 5 MB |
+| No aparece una acción | Revisar estado, permisos y cuenta activa |
+
+## Registro de ensayo y evidencias
+
+Al realizar el ensayo en el entorno de demostración, registrar sin credenciales:
+- Fecha y versión desplegada.
+- Número del trámite y pagos utilizados.
+- Duración observada y resultado de cada paso.
+- Capturas de sesión iniciada, borrador, observación, pago pendiente, decisión e historial final.
+- Evidencias de permisos denegados y consulta de bitácora.
+
+Las capturas deben salir de la aplicación ejecutada. Este documento no presenta imágenes ni un ensayo real como realizados.

@@ -5,6 +5,10 @@ Sistema de tramites ciudadanos (curso de Auditoria de Sistemas). API en Spring B
 Equipo de desarrollo: Ernesto (encargado), Brandom, Frank.
 Documentacion y tablero: Notion, pagina NovaGest.
 
+Manual por rol y demostracion: [manual de usuario](docs/manual/manual-usuario.md),
+[guion por pantallas](docs/manual/guion-demo.md) y
+[revision de las tarjetas 24, 30, 32 a 36 y 43](docs/manual/revision-tarjetas.md).
+
 ## Requisitos
 - Java 21
 - Docker Desktop encendido (pruebas con Testcontainers y base local)
