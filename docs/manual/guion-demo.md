@@ -17,6 +17,7 @@ El guion anterior del PR #67 era una demostración de API. Esta versión usa el 
 | Rol | Correo |
 | --- | --- |
 | Ciudadano | ciudadano@novagest.test |
+| Segundo ciudadano | ciudadano2@novagest.test |
 | Gestor | gestor@novagest.test |
 | Auditor | auditor@novagest.test |
 | Administrador | administrador@novagest.test |
@@ -38,8 +39,8 @@ Si la cuenta está bloqueada, esperar 15 minutos o desbloquearla con el administ
 | 4:00 | Ciudadano | Abrir trámite Observado → Editar | Corregir dirección, guardar y Enviar corrección |
 | 4:45 | Gestor | Bandeja → En revisión → detalle → Aprobar y pasar a pago | Estado Por pagar |
 | 5:30 | Ciudadano | Detalle → Pago → Subir comprobante | Pago Pendiente; no ofrece validación |
-| 6:15 | Gestor | Bandeja → Esperando pago → detalle → Descargar comprobante | El gestor puede revisar el archivo |
-| 6:45 | Gestor | Validar pago → Confirmar validación | Pago Validado; trámite Finalizado; historial actualizado |
+| 6:15 | Gestor | Pagos pendientes → Descargar comprobante | Lista solo los pagos pendientes; el gestor puede revisar el archivo |
+| 6:45 | Gestor | Validar pago → Confirmar validación → Ver trámite | Sale de la lista de pendientes; pago Validado, trámite Finalizado e historial actualizado |
 | 7:30 | Ciudadano | Consultar detalle e Historial | Ver el recorrido completo y quién actuó |
 | 8:00 | Auditor | Trámites → detalle | Datos e historial consultables; sin botones de escritura |
 | 8:30 | Auditor | Swagger → GET /api/bitacora?recurso=tramite | Evidencia de antes/después y actores |
@@ -99,4 +100,4 @@ Al realizar el ensayo en el entorno de demostración, registrar sin credenciales
 - Capturas de sesión iniciada, borrador, observación, pago pendiente, decisión e historial final.
 - Evidencias de permisos denegados y consulta de bitácora.
 
-Las capturas deben salir de la aplicación ejecutada. Este documento no presenta imágenes ni un ensayo real como realizados.
+El manual incluye capturas del frontend ejecutado con API simulada y datos ficticios. Para acreditar la operación integrada, recoger las mismas evidencias contra el backend del entorno de demostración. No se registra un ensayo cronometrado como realizado.

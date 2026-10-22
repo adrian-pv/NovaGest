@@ -27,6 +27,7 @@ Solo existen en el perfil dev. Todos usan la contraseña configurada en DEMO_PAS
 | Rol | Correo |
 | --- | --- |
 | Ciudadano | ciudadano@novagest.test |
+| Segundo ciudadano | ciudadano2@novagest.test |
 | Gestor | gestor@novagest.test |
 | Auditor | auditor@novagest.test |
 | Administrador | administrador@novagest.test |
@@ -112,7 +113,7 @@ Un cambio concurrente puede provocar un conflicto; actualiza el detalle y vuelve
 
 ### Validar o rechazar un comprobante (tarjeta 36)
 
-1. Abre **Bandeja → Esperando pago** y el detalle del trámite.
+1. Abre **Pagos pendientes** (/pagos). La lista contiene solo pagos pendientes, ordenados por antigüedad y con paginación. También puedes entrar desde **Bandeja → Esperando pago** al detalle del trámite.
 2. En **Pago → Comprobantes enviados**, descarga y revisa el comprobante pendiente.
 3. Pulsa **Validar pago**. La confirmación explica que el trámite finalizará.
 4. Añade un comentario opcional y pulsa **Confirmar validación**, o **Cancelar**.
@@ -171,3 +172,31 @@ Los cambios afectan a los formularios de nuevos trámites. No elimines tipos usa
 | No conecta con el servidor | Comprueba que la API esté activa; en local consulta /actuator/health |
 
 El [guion de demostración](guion-demo.md) recorre el flujo con estas pantallas.
+
+## Capturas por rol
+
+Estas capturas muestran el frontend real ejecutado en navegador con una API simulada y datos ficticios. Ilustran los controles; no acreditan el backend desplegado ni un ensayo cronometrado.
+
+### Acceso
+
+![Pantalla de inicio de sesión](capturas/01-ingresar.png)
+
+### Ciudadano: trámites, borrador y comprobante
+
+![Lista de trámites propios](capturas/02-ciudadano-tramites.png)
+![Detalle del borrador](capturas/03-ciudadano-borrador.png)
+![Comprobante pendiente del ciudadano](capturas/04-ciudadano-pago.png)
+
+### Gestor: pendientes y confirmación
+
+![Lista de pagos pendientes](capturas/05-gestor-pendientes.png)
+![Confirmación antes de validar un pago](capturas/06-gestor-confirmacion.png)
+
+### Auditor: consulta sin acciones de escritura
+
+![Detalle consultado por el auditor](capturas/07-auditor-detalle.png)
+
+### Administrador: usuarios y permisos
+
+![Administración de usuarios](capturas/08-administrador-usuarios.png)
+![Consulta de roles y permisos](capturas/09-administrador-roles.png)
