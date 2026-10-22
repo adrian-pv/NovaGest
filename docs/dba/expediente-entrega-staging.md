@@ -53,7 +53,7 @@ La preparación ahora añade lectura completa sin conexión mediante pg_restore 
 
 ## 9. Rotación coordinada
 
-[Procedimiento exacto](rotacion-staging-coordinada.md), pendiente de autorización y horario confirmado: migrador → app, pruebas nuevas TLS de ambos, DBA_LISTO, Adrián actualiza FLYWAY_PASSWORD y DB_PASSWORD en staging/.env, una recreación, ADRIAN_LISTO y verificación. Las claves se generan en daniel1 en un directorio tmpfs solo-root y Adrián las carga en .env desde esos mismos archivos, sin verlas ni transmitirlas; la verificación final comprueba que el contenedor usa exactamente las claves fijadas. El script DBA no edita entornos ni llama Docker. Recuperación avanza a otra clave nueva y siempre vuelve a verificar ambos roles. Puede haber interrupción temporal de nuevas conexiones.
+[Procedimiento exacto](rotacion-staging-coordinada.md), pendiente de autorización y horario confirmado: migrador → app, pruebas nuevas TLS de ambos, DBA_LISTO, Adrián ejecuta `cargar-recrear-staging.sh --aplicar` (carga FLYWAY_PASSWORD y DB_PASSWORD en staging/.env, una recreación con la misma imagen, health UP en 180 s y línea en deploy.log), ADRIAN_LISTO y verificación. Las claves se generan en daniel1 en un directorio tmpfs solo-root y Adrián las carga en .env desde esos mismos archivos, sin verlas ni transmitirlas; la verificación final comprueba que el contenedor usa exactamente las claves fijadas. Los scripts del DBA no editan entornos ni llaman Docker; el de Adrián sí, solo esas dos líneas y una recreación. Recuperación avanza a otra clave nueva y siempre vuelve a verificar ambos roles. Puede haber interrupción temporal de nuevas conexiones.
 
 ## 10. Red, imagen y TLS
 

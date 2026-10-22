@@ -396,35 +396,12 @@ INSERT INTO flyway_schema_history(installed_rank,version,description,type,script
     assert 'SCRAM-SHA-256$' not in registro and not any(v in registro for v in VISTAS), 'clave o verificador en el log'
     RESULTS.append({'caso': f'log de PostgreSQL sin {len(VISTAS)} claves generadas ni verificadores', 'observado': 0})
 
-    # Carga de Adrian: el bloque real del procedimiento sobre un .env de fixture con las claves vigentes.
-    doc = (REPO/'docs/dba/rotacion-staging-coordinada.md').read_bytes().decode('utf-8').replace('\r\n', '\n')
-    carga = doc.split('# --- carga de claves', 1)[1].split('\n', 1)[1].split('# --- fin de la carga', 1)[0]
-    fx = Path(tempfile.mkdtemp(prefix='staging-', dir=WORK))
-    (fx/'snap').mkdir()
-    def cargar(caso, env_txt, app_txt='JWT_SECRET=fixture\n', esperado=0):
-        (fx/'.env').write_bytes(env_txt.encode()); (fx/'app.env').write_bytes(app_txt.encode())
-        cuerpo = carga.replace('/run/novagest-rotacion-staging', CLAVES.as_posix()).replace('/opt/tramites/staging/', fx.as_posix() + '/')
-        cmd = f"set -euo pipefail\numask 077\ncd '{fx.as_posix()}'\nrot_snapshot='{(fx/'snap').as_posix()}'\n{cuerpo}echo CARGA_OK\n"
-        p = run([os.environ['BASH_TEST_BIN'], '-c', cmd], check=False)
-        salida = (p.stdout + p.stderr).decode('utf-8', 'replace')
-        assert p.returncode == esperado and ('CARGA_OK' in salida) == (esperado == 0), (caso, p.returncode, salida)
-        assert not any(v in salida for v in claves().values()), 'clave en la salida de la carga'
-        RESULTS.append({'caso': f'carga de Adrian: {caso}', 'esperado': esperado, 'observado': p.returncode})
-        return (fx/'.env').read_bytes().decode()
-    base = ('COMPOSE_PROJECT_NAME=novagest-staging\nDB_USER=tramites_app\nDB_PASSWORD=clave-vieja-app\n'
-            'FLYWAY_USER=tramites_migrador\nFLYWAY_PASSWORD=clave-vieja-migrador\nAPP_TAG=1b207b6c0443\n')
-    c = claves()
-    assert cargar('normal', base) == base.replace('=clave-vieja-app', '=' + c['DB_PASSWORD']).replace(
-        '=clave-vieja-migrador', '=' + c['FLYWAY_PASSWORD'])
-    assert not list(fx.glob('.env.rotacion.*')), 'temporal de .env no retirado'
-    for caso, env_txt, app_txt in [('DB_PASSWORD duplicada', base + 'DB_PASSWORD=otra\n', 'JWT_SECRET=fixture\n'),
-                                   ('sin FLYWAY_PASSWORD', base.replace('FLYWAY_PASSWORD=clave-vieja-migrador\n', ''), 'JWT_SECRET=fixture\n'),
-                                   ('app.env con clave de datasource', base, 'SPRING_DATASOURCE_PASSWORD=x\n')]:
-        assert cargar(caso, env_txt, app_txt, esperado=1) == env_txt, '.env debe quedar intacto'
+    # La carga de Adrian y la recreacion unica se prueban en Linux con probar_recreacion_staging.py
+    # (mismo formato de clave que escribe rotar: 64 hex + salto de linea, modo 600).
 
     report={'version':version,'loopback':True,'cluster_nuevo':True,'casos':RESULTS,
             'manifest_sha256':hashlib.sha256((SCRIPTS/'SHA256SUMS').read_bytes()).hexdigest(),
-            'limite':'SQL real, pipeline, lector de respaldo, rotacion y carga de Adrian sobre fixture; '
+            'limite':'SQL real, pipeline, lector de respaldo y rotacion; la carga de Adrian esta en probar_recreacion_staging.py; '
                      'no ejecuta root/runuser/Docker ni toca staging'}
     (ROOT/'resultado-regresion.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     print(json.dumps({'resultado':'OK','casos':len(RESULTS),'version':version},ensure_ascii=False))

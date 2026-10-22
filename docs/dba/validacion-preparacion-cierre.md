@@ -20,7 +20,7 @@ Se corrigieron tres riesgos antes de ejecutar: comprobación de SET ROLE owner a
 
 Validación local ampliada: 26 comprobaciones correctas (sintaxis de tres scripts, --plan y modo sin argumentos, rechazo de argumentos inválidos, bloques Bash de documentación, siete hashes/copias privadas, V9/V10 intactas en HEAD y develop consultado, revisión acotada de patrones sensibles). Evidencia local: validacion-local-cierre.json. El control de patrones no sustituye Gitleaks ni certifica ausencia universal de secretos. No se ejecutaron SQL nuevo, cambios de clave, comandos Docker ni caminos privilegiados. El helper de validación local está fuera del PR, dentro del área exclusiva de NovaGest.
 
-Hash del manifest en esa fecha: b1e58c1dc161b27022f65a3dc304b0eee1b6013356b6dabe8ff03b4de1d3e589. **Ya no es el vigente:** ese paquete daba OK con comprobaciones fallidas (ver abajo). Manifest vigente: `f92e5682a387910f43f39515483795c4078f12cb93b39f55184b5fed2de0a391` ([rotación](#validacion-rotacion-22-10)).
+Hash del manifest en esa fecha: b1e58c1dc161b27022f65a3dc304b0eee1b6013356b6dabe8ff03b4de1d3e589. **Ya no es el vigente:** ese paquete daba OK con comprobaciones fallidas (ver abajo). Manifest vigente: `5426132bfe9256673d292e8401d32ecf4940287872e1c06b3d9d73655c9ce44e` ([rotación](#validacion-rotacion-22-10), [carga y recreación](#validacion-recreacion-22-10)).
 
 ## Ejecución principal Codex y respaldo — 22/10/2026 01:25–01:28 UTC
 
@@ -88,4 +88,43 @@ La entrada manual del custodio en dos terminales no garantizaba que Adrián conf
 
 Límite: el modo 700 del directorio solo se prueba en Linux (Git Bash con `noacl` muestra `0777 & ~umask`). No se ejecutó nada en staging.
 
-Manifest vigente: `f92e5682a387910f43f39515483795c4078f12cb93b39f55184b5fed2de0a391`.
+Manifest de esa validación: `f92e5682a387910f43f39515483795c4078f12cb93b39f55184b5fed2de0a391` (sustituido abajo; sus siete archivos conservan los hashes).
+
+<a id="validacion-recreacion-22-10"></a>
+
+## Validación 22/10/2026 — carga y recreación de Adrián (`cargar-recrear-staging.sh`)
+
+Adrián revisó el procedimiento y pidió tres ajustes antes de ejecutarlo:
+
+1. Esperar el health tras recrear.
+2. Un script independiente en lugar del bloque en línea.
+3. Una línea en `deploy.log`.
+
+`cargar-recrear-staging.sh` sustituye al bloque:
+
+- **Ejecución:** `set -Eeuo pipefail`, informa la línea del fallo y retira el `.env.rotacion.*` si algo falla. Usa el candado de tramites-ctl.
+- **Comprobaciones:** dueño y modo de `.env` y `app.env`, mismo ID de imagen, redes y montajes. Nunca hace pull, build, down ni una segunda recreación.
+- **Health:** espera hasta 180 s un JSON válido con status UP.
+- **Fallo:** diagnóstico enmascarado (estado y hasta 80 líneas de log).
+- **Bitácora:** línea con el formato de tramites-ctl en `deploy.log`.
+
+`probar_recreacion_staging.py`: Linux (daniel1, directorio temporal de un usuario sin acceso a Docker), docker y curl simulados que registran cada llamada y rechazan cualquier orden no prevista. No se usó staging ni Docker.
+
+| Prueba | Resultado |
+| --- | --- |
+| Arnés completo | **39 casos correctos** |
+| `--plan` / uso inválido (5 variantes) | 0 / 2, sin llamar a docker |
+| `--comprobar` antes y después de las claves; ID distinto; `.env` sin salto final | 0 sin cambios, sin captura y sin recrear (avisa de las copias `.env.*`/`app.env.*` y de temporales previos) / 1 |
+| `--aplicar` normal | 0: solo cambian las dos líneas, que coinciden con los archivos de claves; modo 600; una sola recreación, que ya ve las claves nuevas; health consultado; `deploy.log` conserva lo anterior y añade `… \| staging \| rotacion-credenciales OK <etiqueta> (imagen sha256:… sin cambios; …; health UP) \| <SUDO_USER>`; captura privada; `ADRIAN_LISTO` |
+| Detenido antes de recrear (15 causas): sin claves, claves 644 o con formato inválido, etiqueta movida, contenedor inexistente, compose con otra imagen, DB_PASSWORD duplicada, sin FLYWAY_PASSWORD, clave en `app.env`, `.env` sin salto final, `.env` 644 / enlace simbólico / enlace duro, `deploy.log` enlace, candado ocupado | 1, `.env` intacto, sin temporales, sin recreación |
+| Fallo inesperado (chown) a mitad de la carga | 1, "FALLO: linea 181", temporal retirado, `.env` intacto |
+| Temporales de una carga interrumpida / `deploy.log` inexistente / health UP al tercer intento / compose no entregaría las claves | 0 retirándolos / 0 creándolo con dueño y modo de `current_tag` / 0 / 1 sin recrear |
+| Tras recrear (8 causas): health DOWN, JSON truncado, no JSON, sin respuesta, contenedor exited (parada inmediata), imagen distinta, topología distinta, `compose up` con error | 5, una sola recreación, `deploy.log` con `rotacion-credenciales FALLÓ`, diagnóstico ≤ 80 líneas con las claves y los valores `password`/`token` ocultos, sin `ADRIAN_LISTO` |
+| Secretos | Ninguna clave nueva ni anterior en salidas, argumentos de docker, `deploy.log` ni capturas |
+| Mutantes (8) | 7 detectados: health por `grep`, sin limpieza, sin enmascarado, sin `--pull never`, sin línea de fallo, sin parada por `exited`, registro antes del health. El octavo (quitar la comparación del resto de `.env`) sobrevive porque ningún `.env` que pase el control de salto final la alcanza: queda como defensa redundante. |
+
+`probar_preparacion_postgres.py` ya no extrae el bloque del `.md`: **81 casos correctos** (los 85 anteriores menos los 4 de carga, cubiertos ahora aquí). Las claves de prueba usan el mismo formato que escribe `rotar` (64 hex y salto de línea, modo 600).
+
+Límite: no prueba Docker ni la app reales. La primera ejecución real será la de la ventana; `--comprobar` es de solo lectura y puede ejecutarse antes sobre staging.
+
+Manifest vigente: `5426132bfe9256673d292e8401d32ecf4940287872e1c06b3d9d73655c9ce44e`.

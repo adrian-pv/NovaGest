@@ -56,60 +56,42 @@ La conexión de prueba sale por loopback y verifica credencial/TLS; la ruta desd
 
 ## Entrega y recreación única — exclusivamente Adrián
 
-No usar docker restart: no incorpora las variables cambiadas. El `tramites-ctl deploy` del repositorio hace `compose pull` incondicional; invocarlo sin más no garantiza conservar el mismo ID si una etiqueta se movió. Adrián debe revisar este paso controlado que usa **su Compose existente**, sin modificar tramites-ctl ni instalar otro procedimiento.
+No usar `docker restart`: no incorpora las variables cambiadas. No usar `tramites-ctl deploy`: hace `compose pull` incondicional y no garantiza conservar el mismo ID si una etiqueta se movió.
 
-Bloque para la terminal administrativa de Adrián, **no ejecutado por nosotros** y sujeto a la autorización de reinicio. La captura de rot_ref/rot_image y topología debe hacerse también antes del cambio de claves, para conservar una línea base de toda la ventana.
+Adrián usa `cargar-recrear-staging.sh`, del mismo paquete y manifest, como root y desde la copia verificada:
 
 ```bash
-set -euo pipefail
-umask 077
-cd /opt/tramites/staging
-[[ -f .lock && ! -L .lock ]]
-exec 9<>.lock
-flock -n 9                           # DBA ya libero su fase
-rot_cid=novagest-staging-app-1
-read -r rot_tag < current_tag
-[[ $rot_tag =~ ^[0-9a-f]{7,64}$ ]]
-rot_ref=$(docker inspect -f '{{.Config.Image}}' "$rot_cid")
-rot_image=$(docker inspect -f '{{.Image}}' "$rot_cid")
-: "${NOVAGEST_IMAGE_ID_PREVIO:?Adrian debe introducir el ID sha256 registrado antes de cambiar claves}"
-[[ $NOVAGEST_IMAGE_ID_PREVIO =~ ^sha256:[0-9a-f]{64}$ ]]
-[[ $rot_image == "$NOVAGEST_IMAGE_ID_PREVIO" ]]
-rot_snapshot=$(mktemp -d /root/novagest-recreacion.XXXXXXXX)
-printf '%s\n' "$rot_image" >"$rot_snapshot/image-id.txt"
-docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k $v.NetworkID}}{{end}}{{range .Mounts}}{{println .Type .Name .Source .Destination}}{{end}}' "$rot_cid" | sort >"$rot_snapshot/topologia-antes.txt"
-docker network inspect novagest-staging_default >/dev/null
-# --- carga de claves: solo despues de DBA_LISTO. Sin copia de .env: solo una huella de las demas lineas.
-rot_sec=/run/novagest-rotacion-staging
-[[ -d $rot_sec && ! -L $rot_sec && -O $rot_sec && $(stat -c %a -- "$rot_sec") == 700 && -s $rot_sec/FLYWAY_PASSWORD && -s $rot_sec/DB_PASSWORD ]]
-[[ $(grep -c '^FLYWAY_PASSWORD=' .env) == 1 && $(grep -c '^DB_PASSWORD=' .env) == 1 ]]
-[[ $(grep -cE '^(FLYWAY_PASSWORD|DB_PASSWORD|SPRING_FLYWAY_PASSWORD|SPRING_DATASOURCE_PASSWORD)=' app.env) == 0 ]]
-grep -Ev '^(FLYWAY_PASSWORD|DB_PASSWORD)=' .env | sha256sum >"$rot_snapshot/resto-env-antes.sha256"
-rot_env=$(mktemp /opt/tramites/staging/.env.rotacion.XXXXXXXX)
-awk -v d="$rot_sec" '
-  BEGIN { if ((getline f < (d "/FLYWAY_PASSWORD")) <= 0 || (getline a < (d "/DB_PASSWORD")) <= 0) { err = 1; exit } }
-  /^FLYWAY_PASSWORD=/ { print "FLYWAY_PASSWORD=" f; nf++; next }
-  /^DB_PASSWORD=/ { print "DB_PASSWORD=" a; na++; next }
-  { print }
-  END { if (err) exit 4; if (nf != 1 || na != 1) exit 3 }' .env >"$rot_env"
-grep -Ev '^(FLYWAY_PASSWORD|DB_PASSWORD)=' "$rot_env" | sha256sum | cmp - "$rot_snapshot/resto-env-antes.sha256"
-chown --reference=.env -- "$rot_env"
-chmod --reference=.env -- "$rot_env"
-mv -f -- "$rot_env" .env
-# --- fin de la carga; .env ya tiene las claves vigentes. Recrear sin pausa:
-rot_compose=(docker compose --project-directory /opt/tramites/staging -f /opt/tramites/staging/compose.yaml --env-file /opt/tramites/staging/.env)
-[[ $(docker image inspect -f '{{.Id}}' "$rot_ref") == "$rot_image" ]]
-APP_TAG="$rot_tag" "${rot_compose[@]}" config --format json | python3 -c 'import json,sys; c=json.load(sys.stdin); assert c["services"]["app"]["image"]==sys.argv[1]' "$rot_ref"
-APP_TAG="$rot_tag" "${rot_compose[@]}" up -d --no-deps --no-build --pull never --force-recreate app
-[[ $(docker inspect -f '{{.Image}}' "$rot_cid") == "$rot_image" ]]
-docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k $v.NetworkID}}{{end}}{{range .Mounts}}{{println .Type .Name .Source .Destination}}{{end}}' "$rot_cid" | sort >"$rot_snapshot/topologia-despues.txt"
-cmp "$rot_snapshot/topologia-antes.txt" "$rot_snapshot/topologia-despues.txt"
-flock -u 9
-exec 9>&-
-# Conservar snapshot privado y comunicar ADRIAN_LISTO sin valores de contrasenas.
+bash cargar-recrear-staging.sh --plan                          # vista previa, sin privilegios
+sudo bash cargar-recrear-staging.sh --comprobar sha256:<ID>    # solo lectura: antes de la ventana y justo antes de DBA_LISTO
+sudo bash cargar-recrear-staging.sh --aplicar sha256:<ID>      # solo tras DBA_LISTO, sin pausa
 ```
 
-El JSON de `config` solo transita por memoria hacia el filtro: no imprimirlo, usar tee ni guardarlo en logs. La carga escribe un `.env` nuevo en el mismo directorio (mismo dueño y modo) y lo sustituye de forma atómica; si algo falla antes del `mv`, `.env` queda intacto y se borra el temporal `.env.rotacion.*` sin mirarlo. No usar nano/sed/echo con los valores: mostrarían o expondrían las claves. Cualquier discrepancia de imagen/topología detiene la entrega y se investiga. No ejecutar down, pull, build, eliminación de volúmenes, red externa de #84 ni un segundo reinicio como intento automático. [Docker restart](https://docs.docker.com/reference/cli/docker/compose/restart/), [Docker up](https://docs.docker.com/reference/cli/docker/compose/up/).
+`<ID>` es el `.Image` del contenedor capturado antes de rotar (paso 5.1 de las órdenes). El script:
+
+- **Respeta el candado.** Toma `/opt/tramites/staging/.lock` (el de tramites-ctl) durante toda la operación.
+- **Comprueba antes de tocar nada:**
+  - `.env` y `app.env` son de `deploy:deploy`, modo 600, sin enlaces;
+  - `.env` termina en salto de línea y tiene una sola línea `FLYWAY_PASSWORD=` y `DB_PASSWORD=`;
+  - `app.env` no tiene contraseñas de base;
+  - `current_tag` y `APP_PORT` son válidos;
+  - el contenedor y la etiqueta usan ese ID, y `compose config` usa esa imagen.
+  - Avisa, solo con nombres, de copias `.env.*`/`app.env.*` que puedan conservar claves.
+- **Carga las claves sin mostrarlas.** Lee las dos de `/run/novagest-rotacion-staging` y escribe un `.env.rotacion.*` con el mismo dueño y modo. Solo lo sustituye de forma atómica si el resto de `.env` queda idéntico (huella SHA-256). Comprueba después que `compose config` entrega exactamente esas claves a `app`. Con `set -Eeuo pipefail`, cualquier error informa la línea y retira el temporal; `.env` queda intacto. No copia el `.env` anterior.
+- **Recrea una sola vez:** `compose up -d --no-deps --no-build --pull never --force-recreate app`. Exige contenedor nuevo, la misma imagen y las mismas redes y montajes.
+- **Espera el health.** Hasta 180 s, a que `http://127.0.0.1:${APP_PORT}/actuator/health` devuelva JSON válido con `status` UP. Si el contenedor queda `exited` o `dead`, se detiene de inmediato.
+- **Bitácora.** Si todo va bien, añade a `deploy.log` una línea con el formato de tramites-ctl (`tramites-ctl status` la muestra) y termina con `ADRIAN_LISTO`:
+  `<UTC> | staging | rotacion-credenciales OK <etiqueta> (imagen sha256:… sin cambios; FLYWAY_PASSWORD y DB_PASSWORD nuevas; health UP) | <SUDO_USER>`
+
+Códigos:
+
+| Código | Significado | Qué hacer |
+| --- | --- | --- |
+| 0 | `ADRIAN_LISTO` | Avisar al DBA para la verificación final. |
+| 1 | Detenido antes de recrear | Corregir la causa indicada y repetir `--aplicar`: aún no hubo recreación. Si ya se cargó `.env`, repetir es idempotente. |
+| 2 | Uso incorrecto | Revisar los argumentos. |
+| 5 | Detenido después de recrear | No repetir. Muestra el estado del contenedor y hasta 80 líneas de log enmascaradas (claves vigentes y valores tipo `password=`/`token:`), deja el diagnóstico en `/root/novagest-recreacion.*/diagnostico.txt` y registra `rotacion-credenciales FALLÓ` en `deploy.log`. Avisar al DBA; una segunda recreación requiere decisión explícita del equipo. |
+
+**Pruebas:** `docs/dba/tests/probar_recreacion_staging.py` en Linux, sin privilegios, con docker y curl simulados que registran cada llamada y rechazan `pull`, `build`, `down`, `restart` y cualquier `up` distinto del indicado: 39 casos. No se usó staging. Detalle en la [validación](validacion-preparacion-cierre.md#validacion-recreacion-22-10).
 
 ## Recuperación
 
@@ -117,12 +99,12 @@ El JSON de `config` solo transita por memoria hacia el filtro: no imprimirlo, us
 - Fallo entre roles o autenticación no confirmada: mantener Deploy pausado; Adrián no carga ni recrea. Volver a fijar el rol afectado con una clave NUEVA mediante `rotar-migrador` o `rotar-app` en la misma copia verificada (reutilizan el directorio de claves). Estos modos son solo recuperación, con autorización; la ejecución normal siempre rota ambos en orden.
 - Cualquier modo termina verificando los dos roles con los archivos vigentes; solo entonces emite DBA_LISTO.
 - No recuperar la contraseña expuesta. No restaurar hashes antiguos ni repetir automáticamente la rotación.
-- Si .env quedó incorrecto: Adrián repite la carga desde el mismo directorio (fuente única de las claves vigentes). No hay copia de .env con las claves comprometidas que restaurar, a propósito.
-- Si la recreación no queda sana: preservar imagen/topología/volúmenes; revisar localmente credenciales y configuración efectiva. DBA puede ayudar con conexiones de solo lectura. No cambiar imagen ni datos como recuperación automática. Una segunda recreación o cambio de clave requiere decisión explícita del equipo.
+- Si `cargar-recrear-staging.sh --aplicar` termina con 1 (antes de recrear): corregir la causa y repetirlo; el directorio de claves es la fuente única. No hay copia de .env con las claves comprometidas que restaurar, a propósito.
+- Si termina con 5 (después de recrear): preservar imagen, topología y volúmenes y revisar el diagnóstico privado. DBA puede ayudar con conexiones de solo lectura. No cambiar imagen ni datos como recuperación automática. Una segunda recreación o cambio de clave requiere decisión explícita del equipo.
 - Las contraseñas no se respaldan fuera del directorio tmpfs de la ventana. Perder ese directorio antes de la carga de Adrián se resuelve fijando otras claves nuevas.
 
 ## Verificación final
 
 Solo después de ADRIAN_LISTO y con autorización para sudo, ejecutar el [protocolo final](verificacion-final-staging.md). Conservar evidencias sin secretos, dejar Deploy pausado y solicitar revisión del dictamen. El éxito técnico no autoriza producción.
 
-Cuando la verificación final termina en OK, retirar las claves temporales (como root): `rm -f -- /run/novagest-rotacion-staging/{FLYWAY_PASSWORD,DB_PASSWORD} && rmdir /run/novagest-rotacion-staging`.
+Cuando la verificación final termina en OK, retirar las claves temporales (como root): `rm -f -- /run/novagest-rotacion-staging/{FLYWAY_PASSWORD,DB_PASSWORD} && rmdir /run/novagest-rotacion-staging`. Las copias `.env.*`/`app.env.*` que avisó el script conservan claves anteriores (y `app.env.*` quizá el JWT vigente): retirarlas con autorización de Adrián, después de comprobar que no las usa ningún procedimiento.
