@@ -20,7 +20,7 @@ Se corrigieron tres riesgos antes de ejecutar: comprobación de SET ROLE owner a
 
 Validación local ampliada: 26 comprobaciones correctas (sintaxis de tres scripts, --plan y modo sin argumentos, rechazo de argumentos inválidos, bloques Bash de documentación, siete hashes/copias privadas, V9/V10 intactas en HEAD y develop consultado, revisión acotada de patrones sensibles). Evidencia local: validacion-local-cierre.json. El control de patrones no sustituye Gitleaks ni certifica ausencia universal de secretos. No se ejecutaron SQL nuevo, cambios de clave, comandos Docker ni caminos privilegiados. El helper de validación local está fuera del PR, dentro del área exclusiva de NovaGest.
 
-Hash del manifest en esa fecha: b1e58c1dc161b27022f65a3dc304b0eee1b6013356b6dabe8ff03b4de1d3e589. **Ya no es el vigente:** ese paquete daba OK con comprobaciones fallidas (ver abajo). Manifest vigente: `445ae506278cca11370fab615b2ba85f91a1a2c8b5109d184e279720683ab72a`.
+Hash del manifest en esa fecha: b1e58c1dc161b27022f65a3dc304b0eee1b6013356b6dabe8ff03b4de1d3e589. **Ya no es el vigente:** ese paquete daba OK con comprobaciones fallidas (ver abajo). Manifest vigente: `f92e5682a387910f43f39515483795c4078f12cb93b39f55184b5fed2de0a391` ([rotación](#validacion-rotacion-22-10)).
 
 ## Ejecución principal Codex y respaldo — 22/10/2026 01:25–01:28 UTC
 
@@ -62,4 +62,30 @@ Pruebas en un clúster PostgreSQL 18.6 **nuevo, desechable, de loopback y con TL
 
 Límites: el arnés sustituye root, runuser, flock, el socket y las rutas del servidor; no ejecuta `rotar-staging-coordinado.sh` ni nada sobre Docker, staging o producción. El ensayo real en el servidor sigue requiriendo autorización.
 
-Manifest vigente: `445ae506278cca11370fab615b2ba85f91a1a2c8b5109d184e279720683ab72a`.
+Manifest de esa validación: `445ae506278cca11370fab615b2ba85f91a1a2c8b5109d184e279720683ab72a` (sustituido abajo; los cinco archivos del REVOKE conservan sus hashes).
+
+<a id="validacion-rotacion-22-10"></a>
+
+## Validación 22/10/2026 — rotación con entrega exacta a Adrián
+
+La entrada manual del custodio en dos terminales no garantizaba que Adrián configurara exactamente las claves fijadas. Cambios:
+
+- `rotar-staging-coordinado.sh` genera cada clave en el servidor (256 bits, hex) en `/run/novagest-rotacion-staging` (tmpfs, root 700). PostgreSQL recibe el verificador SCRAM-SHA-256 (4096 iteraciones), nunca la clave, en una sesión con `log_statement` y `log_min_duration_statement` desactivados. Cada rol se verifica con una conexión nueva `sslmode=require` y la columna `ssl` de `pg_stat_ssl`; al final se verifican ambos. Nuevo modo `comprobar` (solo lectura).
+- `verificar-staging-final.sh` compara en memoria FLYWAY/DB_PASSWORD del contenedor con esos archivos y autentica con `comprobar`; ya no pide claves por TTY.
+- Procedimiento: Adrián carga las dos variables desde esos archivos con un bloque que no las muestra, exige una sola línea de cada una, ninguna clave en `app.env` y el resto de `.env` idéntico (huella SHA-256); sustitución atómica. Se eliminó la copia `env-antes` con las claves anteriores.
+
+| Prueba (arnés, clúster nuevo con `log_statement=all` y pg_hba SCRAM con o sin TLS, como staging) | Resultado |
+| --- | --- |
+| Arnés completo | **85 casos correctos** (63 anteriores + 22) |
+| `rotar` normal | 0, DBA_LISTO; migrador antes que app; claves de 64 hex distintas; las anteriores ya no autentican; `pg_authid` con `SCRAM-SHA-256$4096:` |
+| Frase incorrecta / argumento inválido / directorio de una ventana anterior | 2 / 2 / 1, sin cambios |
+| `comprobar`: app con otra clave, app con SET ROLE al dueño, migrador sin SET ROLE, servidor sin TLS, sin directorio | 1, sin OK |
+| Fallo a mitad (app sin LOGIN tras su cambio) | 1, "DETENIDO…", sin DBA_LISTO; `rotar-app` recupera, conserva la clave del migrador y vuelve a verificar ambos |
+| Log de PostgreSQL tras 6 claves generadas | Sin claves ni verificadores (registra el resto: la prueba es válida) |
+| Salida de los scripts | Sin claves en ningún caso |
+| Carga de Adrián: normal / DB_PASSWORD duplicada / sin FLYWAY_PASSWORD / clave en `app.env` | 0 con solo esas dos líneas cambiadas / 1 con `.env` intacto en los tres negativos |
+| Mutantes: sin `SET LOCAL log_statement = none` / `sslmode=prefer` sin comprobar `ssl` | El arnés falla ("clave o verificador en el log" / "servidor sin TLS" con 0) |
+
+Límite: el modo 700 del directorio solo se prueba en Linux (Git Bash con `noacl` muestra `0777 & ~umask`). No se ejecutó nada en staging.
+
+Manifest vigente: `f92e5682a387910f43f39515483795c4078f12cb93b39f55184b5fed2de0a391`.
