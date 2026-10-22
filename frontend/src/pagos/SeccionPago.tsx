@@ -18,27 +18,28 @@ import { motivoDeCampo } from '../paginas/formularios'
 import { useSesion } from '../sesion/contexto'
 import { ACEPTADOS, motivoDeRechazo, tamanoLegible } from './comprobante'
 import { ETIQUETA_PAGO, nombreDeTipo, TONO_PAGO } from './etiquetas'
+import ResolverPago from './ResolverPago'
 
 interface Props {
   tramite: Tramite
   tipo: TipoTramite
+  alResolver: () => void
 }
 
 /**
  * Pago de un trámite: el monto, los comprobantes enviados con su estado y, cuando corresponde, el formulario para
  * subir uno nuevo. Solo existe a partir de "Por pagar", así que en otros estados no se muestra ni se consulta.
  *
- * Validar o rechazar un comprobante (la parte del gestor) es la tarjeta 36: se agrega aquí, en la lista de pagos,
- * para los pagos PENDIENTES de quien tenga el permiso pago:editar.
+ * La tarjeta 36 permite resolver los pagos pendientes con pago:editar y actualiza el detalle y su historial.
  */
-export default function SeccionPago({ tramite, tipo }: Props) {
+export default function SeccionPago({ tramite, tipo, alResolver }: Props) {
   const { tienePermiso } = useSesion()
   const aplica = tramite.estado === 'POR_PAGAR' || tramite.estado === 'FINALIZADO'
   if (!aplica || !tienePermiso('pago:leer')) return null
-  return <Pagos tramite={tramite} tipo={tipo} />
+  return <Pagos tramite={tramite} tipo={tipo} alResolver={alResolver} />
 }
 
-function Pagos({ tramite, tipo }: Props) {
+function Pagos({ tramite, tipo, alResolver }: Props) {
   const { tienePermiso } = useSesion()
   const pagos = useDatos(`pagos-${tramite.id}`, (senal) => listarPagosDeTramite(tramite.id, senal))
   const lista = pagos.datos?.content ?? []
@@ -77,7 +78,7 @@ function Pagos({ tramite, tipo }: Props) {
           <p>El pago fue validado y el trámite quedó finalizado.</p>
         </Aviso>
       )}
-      {tramite.estado === 'POR_PAGAR' && pendiente && (
+      {tramite.estado === 'POR_PAGAR' && pendiente && tienePermiso('pago:crear') && (
         <Aviso tipo="info">
           <p>
             Recibimos tu comprobante. Un gestor lo revisará; vuelve a consultar este trámite para
@@ -86,8 +87,15 @@ function Pagos({ tramite, tipo }: Props) {
         </Aviso>
       )}
       {tramite.estado === 'POR_PAGAR' && !pendiente && ultimo?.estado === 'RECHAZADO' && (
-        <Aviso tipo="advertencia" titulo="Tu último comprobante fue rechazado">
-          <p>{ultimo.comentario ?? 'Sube uno nuevo para continuar.'}</p>
+        <Aviso
+          tipo="advertencia"
+          titulo={
+            tienePermiso('pago:crear')
+              ? 'Tu último comprobante fue rechazado'
+              : 'El último comprobante fue rechazado'
+          }
+        >
+          <p>{ultimo.comentario ?? 'El ciudadano puede enviar otro comprobante.'}</p>
         </Aviso>
       )}
       {tramite.estado === 'POR_PAGAR' &&
@@ -97,7 +105,15 @@ function Pagos({ tramite, tipo }: Props) {
 
       {puedeSubir && <FormularioComprobante tramiteId={tramite.id} alSubir={pagos.recargar} />}
 
-      {lista.length > 0 && <ListaPagos pagos={lista} />}
+      {lista.length > 0 && (
+        <ListaPagos
+          pagos={lista}
+          alResolver={() => {
+            pagos.recargar()
+            alResolver()
+          }}
+        />
+      )}
     </section>
   )
 }
@@ -176,20 +192,20 @@ function FormularioComprobante({ tramiteId, alSubir }: { tramiteId: number; alSu
   )
 }
 
-function ListaPagos({ pagos }: { pagos: Pago[] }) {
+function ListaPagos({ pagos, alResolver }: { pagos: Pago[]; alResolver: () => void }) {
   return (
     <>
       <h3 className="subtitulo">Comprobantes enviados</h3>
       <ul className="lista-pagos">
         {pagos.map((pago) => (
-          <FilaPago key={pago.id} pago={pago} />
+          <FilaPago key={pago.id} pago={pago} alResolver={alResolver} />
         ))}
       </ul>
     </>
   )
 }
 
-function FilaPago({ pago }: { pago: Pago }) {
+function FilaPago({ pago, alResolver }: { pago: Pago; alResolver: () => void }) {
   const [descargando, setDescargando] = useState(false)
   const [error, setError] = useState<unknown>(null)
 
@@ -233,6 +249,7 @@ function FilaPago({ pago }: { pago: Pago }) {
         Descargar comprobante
       </Boton>
       {Boolean(error) && <AvisoError error={error} />}
+      <ResolverPago pago={pago} alResolver={alResolver} />
     </li>
   )
 }
