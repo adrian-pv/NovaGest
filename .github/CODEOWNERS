@@ -1,6 +1,16 @@
 # Las migraciones requieren la revision del responsable DBA.
 # El repositorio debe exigir aprobacion de code owners en main y develop.
 /src/main/resources/db/migration/ @hgfdiuy
+# Lo que corre con privilegios del dueno en cada despliegue, o decide que carga Flyway: tambien DBA.
+# Revisar las pruebas y la configuracion que determinan las ubicaciones de Flyway.
+/src/main/resources/db/callback/ @hgfdiuy
+/src/main/java/db/ @hgfdiuy
+/src/main/resources/application*.properties @hgfdiuy
+/src/main/resources/application*.yml @hgfdiuy
+/src/main/resources/application*.yaml @hgfdiuy
+/src/test/java/com/proyecto/tramites/MigracionesTests.java @hgfdiuy
+/docs/dba/ @hgfdiuy
 
-# La asignacion de responsables queda bajo revision del propietario del repositorio.
-/.github/CODEOWNERS @ernestosantizo2003
+# Workflows (gitleaks, Trivy, despliegue) y la asignacion de responsables: propietario del repositorio.
+# Un cambio en .github/workflows podria apagar un control de seguridad.
+/.github/ @ernestosantizo2003

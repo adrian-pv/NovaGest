@@ -9,7 +9,7 @@ SELECT current_database() = 'tramites_pruebas' AS base_correcta \gset
 \if :base_correcta
 \else
   \echo 'ERROR: solo se permite tramites_pruebas'
-  \quit 3
+  DO $f$BEGIN RAISE EXCEPTION 'ERROR: solo se permite tramites_pruebas'; END$f$;
 \endif
 \echo '=== Contexto y modo de solo lectura ==='
 SELECT clock_timestamp() AS fecha_servidor, current_database(), current_user,

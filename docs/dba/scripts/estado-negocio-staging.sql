@@ -7,7 +7,7 @@ SET LOCAL statement_timeout='30s';
 SELECT current_database()='tramites_pruebas' AS base_correcta \gset
 \if :base_correcta
 \else
-  \quit 3
+  DO $f$BEGIN RAISE EXCEPTION 'FALLO: solo se permite tramites_pruebas'; END$f$;
 \endif
 SELECT format('SELECT %L AS tabla, count(*) AS filas FROM %I.%I;',c.relname,n.nspname,c.relname)
 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace

@@ -35,7 +35,7 @@ PSQL=("${ROOTPG[@]}" psql -X -q -v ON_ERROR_STOP=1 -P pager=off -h /var/run/post
 )
 # Unico cambio PostgreSQL del script: el REVOKE en ese archivo.
 "${PSQL[@]}" <"$dir/revocar-historial-staging.sql"
-"${PSQL[@]}" <"$dir/guardia-historial-staging.sql" >"$backup/guardia-despues.txt" 2>&1
+"${PSQL[@]}" <"$dir/guardia-historial-staging.sql" 2>&1 | tee "$backup/guardia-despues.txt"
 "${PSQL[@]}" -Atc "SELECT installed_rank,version,script,checksum,success,installed_by,installed_on,execution_time FROM tramites.flyway_schema_history ORDER BY installed_rank" >"$backup/historial-despues.txt"
 "${PSQL[@]}" <"$dir/estado-negocio-staging.sql" >"$backup/negocio-despues.txt"
 cmp -s "$backup/historial-antes.txt" "$backup/historial-despues.txt" || { echo 'ERROR: historial difiere; investigar' >&2; exit 1; }

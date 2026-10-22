@@ -5,13 +5,15 @@ SET LOCAL statement_timeout='30s';
 SELECT current_database()='tramites_pruebas' AS base_correcta \gset
 \if :base_correcta
 \else
-  \quit 3
+  DO $f$BEGIN RAISE EXCEPTION 'FALLO: solo se permite tramites_pruebas'; END$f$;
 \endif
 -- NOINHERIT puede ocultar privilegios disponibles mediante SET ROLE.
 SELECT NOT pg_has_role('tramites_app','tramites_owner','USAGE')
   AND NOT pg_has_role('tramites_app','tramites_owner','SET')
   AND NOT has_table_privilege('tramites_app','tramites.flyway_schema_history',
-  'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') AS app_sin_acceso,
+  'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
+  AND NOT has_any_column_privilege('tramites_app','tramites.flyway_schema_history',
+  'SELECT,INSERT,UPDATE,REFERENCES') AS app_sin_acceso,
   has_table_privilege('tramites_migrador','tramites.flyway_schema_history',
   'SELECT') AND has_table_privilege('tramites_migrador','tramites.flyway_schema_history','INSERT')
   AND pg_has_role('tramites_migrador','tramites_owner','SET') AS migrador_correcto,
@@ -24,19 +26,19 @@ SELECT NOT pg_has_role('tramites_app','tramites_owner','USAGE')
 \if :app_sin_acceso
 \else
   \echo 'FALLO: tramites_app conserva privilegios en el historial'
-  \quit 4
+  DO $f$BEGIN RAISE EXCEPTION 'FALLO: tramites_app conserva privilegios en el historial'; END$f$;
 \endif
 \if :migrador_correcto
 \else
-  \quit 4
+  DO $f$BEGIN RAISE EXCEPTION 'FALLO: migrador sin acceso o SET ROLE'; END$f$;
 \endif
 \if :historial_correcto
 \else
-  \quit 4
+  DO $f$BEGIN RAISE EXCEPTION 'FALLO: historial distinto de las nueve versiones exitosas'; END$f$;
 \endif
 \if :checksums_correctos
 \else
-  \quit 4
+  DO $f$BEGIN RAISE EXCEPTION 'FALLO: checksums V9/V10 distintos'; END$f$;
 \endif
 -- EXPLAIN sin ANALYZE exige privilegios pero no ejecuta INSERT/UPDATE/DELETE.
 SET LOCAL ROLE tramites_app;

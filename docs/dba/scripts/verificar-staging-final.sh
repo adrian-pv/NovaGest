@@ -62,7 +62,7 @@ WHERE a.datname='tramites_pruebas' AND a.usename='tramites_app' AND a.client_add
 \if :sesiones_nuevas_tls
   \echo 'OK: pool del contenedor con sesiones posteriores a la recreacion y TLS'
 \else
-  \quit 4
+  DO $f$BEGIN RAISE EXCEPTION 'FALLO: sesiones nuevas TLS de app no verificadas'; END$f$;
 \endif
 ROLLBACK;
 SQL
