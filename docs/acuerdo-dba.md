@@ -1,8 +1,10 @@
 # P2 · Entrega técnica para acuerdo con DBA
 
-Fecha de revisión: 21 de octubre de 2026. Estado: propuesta pendiente de aprobación del equipo DBA.
+Fecha de revisión: 22 de octubre de 2026. Estado: propuesta pendiente de aprobación del DBA.
 Fuente: [tarjeta P2 en Notion](https://app.notion.com/p/3ee4e9c74a5c815f8b40c40e30ff408c).
-Requisito RNF-03; control C-08. Responsable de coordinación: Brandom.
+Requisito RNF-03; control C-08. Responsable de coordinación: Brandom. DBA: Rodney (@hgfdiuy).
+
+El estado de la revisión DBA (dictamen, pendientes y evidencias) vive en un solo lugar: el issue [#87](https://github.com/ernestosantizo2003/NovaGest/issues/87) y el PR [#88](https://github.com/ernestosantizo2003/NovaGest/pull/88). Este documento describe el acuerdo; no repite ese seguimiento.
 
 ## Responsabilidades propuestas
 
@@ -10,15 +12,15 @@ Requisito RNF-03; control C-08. Responsable de coordinación: Brandom.
 | --- | --- |
 | Escribir y probar cada migración en su PR | Desarrollo, autor de la tarjeta |
 | Coordinar y comprobar la numeración antes del merge | Brandom |
-| Revisar SQL, integridad, permisos y aprobar migraciones | Equipo DBA, persona pendiente de designar |
-| Crear base, usuarios y entregar conexión por canal privado | Equipo DBA, pendiente de confirmar |
+| Revisar SQL, integridad, permisos y aprobar migraciones | DBA: Rodney (@hgfdiuy); CODEOWNERS de migraciones propuesto en #88 |
+| Crear base, roles y entregar conexión por canal privado | DBA: Rodney (@hgfdiuy) |
 | Revisar el código e integrar a develop | Revisor distinto del autor, según CONTRIBUTING.md |
 
 La aprobación del DBA y la revisión del PR deben quedar registradas con nombre, fecha y enlace de evidencia. Esta propuesta no acredita que ya hayan ocurrido.
 
 ## Conexión verificada en el repositorio
 
-| Variable | Ejecución local | Aplicación en Docker Compose |
+| Variable | Ejecución local | Aplicación en Docker Compose (raíz) |
 | --- | --- | --- |
 | DB_HOST | localhost o host entregado por DBA | db, fijado en docker-compose.yml |
 | DB_PORT | 5432 por defecto en dev; puerto entregado por DBA | 5432 interno; DB_PORT publica el puerto del host |
@@ -29,9 +31,26 @@ La aprobación del DBA y la revisión del PR deben quedar registradas con nombre
 La URL es jdbc:postgresql://<host>:<puerto>/<base>. Ver .env.example y src/main/resources/application*.properties.
 No guardar credenciales en este documento, Notion, commits ni capturas.
 En prod se deben proporcionar todas las variables de conexión; test usa Testcontainers.
-Compose usa PostgreSQL 17; las pruebas de Testcontainers usan postgres:latest (ver TestcontainersConfiguration.java).
-Por tanto, las pruebas no garantizan compatibilidad específica con PostgreSQL 17; DBA debe confirmar la versión del entorno y acordar una versión fija para las pruebas.
-El Compose actual crea el usuario con POSTGRES_USER para desarrollo: no constituye evidencia de mínimo privilegio.
+
+### Cuentas por entorno
+
+| Entorno | Cuenta de Flyway | Cuenta de la aplicación | Dueño de los objetos |
+| --- | --- | --- | --- |
+| Local y Compose de la raíz | La misma que la app (`application.properties` no define `spring.flyway.user`) | `DB_USER` | El mismo usuario (creado con `POSTGRES_USER`) |
+| Staging | `tramites_migrador`, con `SET ROLE` al dueño; llega como `SPRING_FLYWAY_USER` desde `FLYWAY_USER` en `deploy/adrian/compose.yaml` (#80) | `tramites_app`, sin DDL | `tramites_owner`, sin login |
+
+En local, una sola cuenta es aceptable para desarrollo, pero no es evidencia de mínimo privilegio.
+En staging la separación ya existe (ver `deploy/adrian/DESPLIEGUE.md`); lo que falta es la aprobación del DBA en #87 y #88.
+
+### Versión de PostgreSQL
+
+| Dónde | Versión |
+| --- | --- |
+| Servidor de staging | PostgreSQL 18 |
+| Compose de la raíz (dev) | `postgres:17` |
+| Pruebas (`TestcontainersConfiguration`, `BaseAislada`) | `postgres:latest`, hoy 18 pero puede cambiar sin aviso |
+
+Propuesta: fijar las pruebas a `postgres:18`, la versión del servidor, en un PR aparte, y decidir con el DBA si el Compose de dev también pasa a 18.
 
 ## Migraciones y modelo entregado
 
@@ -58,11 +77,10 @@ Solo dev añade db/dev/R__datos_demo.sql; los datos demo no pertenecen al entorn
 
 ## Permisos que DBA debe validar
 
-La cuenta de ejecución debe operar con el mínimo privilegio, sin ser superusuario ni dueña de las tablas.
-En bitacora y tramite_historial: SELECT e INSERT, con acceso necesario a sus secuencias, sin UPDATE, DELETE ni TRUNCATE.
-V6 incluye triggers para bloquear esas modificaciones, pero no sustituye la configuración de roles.
-Actualmente Flyway utiliza la misma conexión que la aplicación. Separar la cuenta migradora de la cuenta de ejecución requiere acordar y configurar credenciales de Flyway; no basta con revocar DDL al usuario actual.
-DBA debe proponer y revisar esa separación antes de aplicar restricciones en un entorno compartido.
+- Las tablas pertenecen a `tramites_owner`. Ni la app ni el migrador son dueños directos ni superusuarios.
+- `tramites_app` opera con mínimo privilegio y sin DDL.
+- En `bitacora` y `tramite_historial`: SELECT e INSERT, con acceso necesario a sus secuencias, sin UPDATE, DELETE ni TRUNCATE. V6 incluye triggers que bloquean esas modificaciones, pero no sustituyen la configuración de roles.
+- `tramites_app` no debe tener ningún privilegio sobre `tramites.flyway_schema_history`. Hoy lo tiene; su retirada espera autorización y la comprueba la guardia de #88 (ver #87).
 
 ## Verificación y evidencia de aceptación
 
@@ -75,24 +93,7 @@ DBA debe proponer y revisar esa separación antes de aplicar restricciones en un
 
 Las pruebas automáticas del repositorio no acreditan los permisos del usuario de un servidor externo.
 
-## Comparación con el trabajo local de Visual Studio
+## Cierre de P2
 
-Se revisaron dos copias: la raíz del espacio y la carpeta NovaGest/.
-La raíz está en feature/43-manual-demo y contiene cambios locales previos para Java 25.
-La copia NovaGest/ contiene el avance integrado hasta la tarjeta 33: sesión, registro, diseño común y pantallas de trámites.
-El frontend de la raíz solo tiene las rutas iniciales; no debe reemplazar al frontend más avanzado.
-Este complemento se prepara desde develop en la copia NovaGest/, conservando los cambios de la raíz.
-
-En el tablero consultado las tarjetas de Brandom 02, 03, 06 y 24 constan como Hecho y tienen implementación correspondiente: paquetes por módulo, conexión/Flyway, contenedores y datos demo/guía.
-P2 permanece En curso y ya tenía un borrador en Notion. Este documento completa la entrega con el inventario real, las diferencias de conexión y la evidencia exigida.
-La planificación antigua asigna otras tarjetas a Brandom, pero el tablero las reasignó; se conserva la asignación del tablero.
-
-## Pendiente de confirmación externa
-
-- [ ] DBA designa responsable de revisión y de provisión de la base.
-- [ ] DBA confirma PostgreSQL 17 y los valores de conexión por entorno.
-- [ ] DBA aprueba el flujo de migraciones y la separación de cuentas/permisos.
-- [ ] Se registra nombre, fecha y evidencia de aprobación.
-- [ ] Otra persona aprueba el PR hacia develop.
-
-No marcar P2 como Hecho hasta disponer de esa evidencia.
+Los pendientes del DBA (permisos, versión fija de las pruebas, aprobación de migraciones y evidencias) se siguen solo en [#87](https://github.com/ernestosantizo2003/NovaGest/issues/87) y [#88](https://github.com/ernestosantizo2003/NovaGest/pull/88).
+P2 se marca como Hecho cuando el DBA registre ahí su aprobación con fecha y evidencia, y otra persona apruebe el PR de este documento.
