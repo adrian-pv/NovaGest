@@ -1,0 +1,51 @@
+name: Regresiones DBA aisladas
+
+on:
+  pull_request:
+    paths:
+      - 'docs/dba/scripts/**'
+      - 'docs/dba/tests/**'
+      - '.github/workflows/pruebas-dba.yml'
+  push:
+    branches: [develop, main]
+    paths:
+      - 'docs/dba/scripts/**'
+      - 'docs/dba/tests/**'
+      - '.github/workflows/pruebas-dba.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  regresiones:
+    name: Guardia SET ROLE y logging (PostgreSQL 18 aislado)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: SQL real y logging en contenedor efimero sin puertos publicados
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /bin/bash \
+            --mount "type=bind,src=$PWD,dst=/repo,readonly" \
+            postgres:18-bookworm -euo pipefail -c '
+              apt-get update -qq >&2
+              apt-get install -y -qq --no-install-recommends python3 >&2
+              exec gosu postgres bash -euo pipefail -c '\''
+                python3 /repo/docs/dba/tests/probar_historial_set_role.py --pg-bin /usr/lib/postgresql/18/bin
+                python3 /repo/docs/dba/tests/probar_logging_rotacion.py --pg-bin /usr/lib/postgresql/18/bin --bash /bin/bash
+                cd /repo/docs/dba/scripts
+                sha256sum -c SHA256SUMS
+                for script in *.sh; do bash -n "$script"; done
+              '\''
+            ' | tee resultado-dba-aislado.log
+      - name: Evidencia de las regresiones
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regresiones-dba-aisladas
+          path: resultado-dba-aislado.log
+          if-no-files-found: error
