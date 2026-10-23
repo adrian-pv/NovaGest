@@ -908,3 +908,12 @@ input[type='file'].campo__entrada {
 .permisos dd {
   margin: 0;
 }
+
+/* Detalle de un registro de la bitacora (tarjeta 39) */
+.cambio h4 {
+  margin: 0.75rem 0 0.25rem;
+}
+
+.cambio .permisos dd {
+  overflow-wrap: anywhere;
+}
