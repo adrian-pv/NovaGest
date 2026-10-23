@@ -26,7 +26,7 @@ Para volver atrás, se restaura el servicio anterior en el túnel.
 ## Variables de la aplicación
 
 - `FORWARD_HEADERS=native` y `PROXIES_CONFIANZA=<puerta de enlace de la red Docker del entorno>`: la app toma la IP del visitante de `X-Forwarded-For` y el esquema `https`, con lo que emite HSTS.
-- `CORS_ORIGINS` vacío si el frontend se sirve en el mismo dominio (recomendado).
+- `CORS_ORIGINS` vacío si el frontend se sirve en el mismo origen (recomendado). Funciona en 443 por el túnel y también en los puertos privados (8082/8083) porque Nginx envía `X-Forwarded-Port`; sin esa cabecera, en un puerto propio los POST del navegador dan 403 "Invalid CORS request".
 
 ## Comprobaciones después de publicar
 

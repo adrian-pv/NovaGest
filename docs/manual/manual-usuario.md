@@ -1,147 +1,202 @@
 # Manual de usuario de NovaGest
 
-Tarjeta 43 · Un capitulo por rol. Esta version describe que puede hacer cada rol y con que operacion de la API.
-Las capturas se agregan cuando existan las pantallas (tarjetas 33 a 40); cada lugar esta marcado con **[CAPTURA]**.
+Tarjeta 43. Complementa el esqueleto integrado en el PR #67 con las pantallas de las tarjetas 30, 32 y 33–36.
+Las instrucciones corresponden al código de esta rama. Los permisos asignados a tu cuenta determinan las opciones visibles.
 
-## Antes de empezar
+## Acceso y navegación
 
-- Para probarlo en local: seguir "Arranque rapido" del `README.md`. Los usuarios de ejemplo (uno por rol) estan en la seccion "Datos de demostracion".
-- Iniciar sesion: correo y clave. Tras 5 claves incorrectas seguidas la cuenta se bloquea 15 minutos.
-- La sesion dura 15 minutos y se renueva sola mientras se usa. "Cerrar sesion" invalida la renovacion.
-- Cada rol ve solo lo que le corresponde. Si una accion no esta permitida, el sistema la rechaza aunque se intente directo en la API.
+En local, prepara el proyecto siguiendo [Arranque y cuentas de demostración](../../README.md).
+La API se ejecuta en http://localhost:8080 y el frontend en http://localhost:5173.
+Abre el frontend y elige **Iniciar sesión**. Introduce correo y contraseña.
+Tras entrar verás **Mi panel**, tus roles y las capacidades de tu cuenta.
 
-**[CAPTURA] Pantalla de inicio de sesion**
+El menú adapta sus enlaces a tus permisos. **Trámites** abre el listado; **Bandeja** aparece para el personal con alcance total.
+Las tablas permiten cambiar de página; los filtros de trámites permanecen en la dirección del navegador.
+Los errores aparecen junto al formulario o en un aviso; **Reintentar** vuelve a cargar cuando está disponible.
 
-### Estados de un tramite
+La sesión de acceso dura 15 minutos y se renueva automáticamente mientras sea posible.
+Al recargar la pestaña se recupera la sesión mediante el token de renovación.
+Usa **Cerrar sesión** antes de cambiar de cuenta en la misma pestaña.
+No compartas tokens, contraseñas ni capturas de credenciales.
+Tras cinco intentos fallidos consecutivos, la cuenta queda bloqueada 15 minutos.
 
-| Estado | Significado | Quien lo mueve |
-|---|---|---|
-| Borrador | El ciudadano lo esta llenando | Ciudadano: lo envia |
-| Enviado | Esperando a un gestor | Gestor: lo toma |
-| En revision | Un gestor lo revisa | Gestor: lo observa, lo rechaza o lo pasa a por pagar |
-| Observado | Falta corregir algo | Ciudadano: corrige y lo reenvia |
-| Por pagar | Aprobado; falta el pago | Ciudadano sube comprobante; gestor lo valida |
-| Finalizado | Pago validado, tramite terminado | Estado final |
-| Rechazado | No procede, con motivo | Estado final |
+### Usuarios de demostración (tarjeta 24)
 
----
+Solo existen en el perfil dev. Todos usan la contraseña configurada en DEMO_PASSWORD.
+
+| Rol | Correo |
+| --- | --- |
+| Ciudadano | ciudadano@novagest.test |
+| Segundo ciudadano | ciudadano2@novagest.test |
+| Gestor | gestor@novagest.test |
+| Auditor | auditor@novagest.test |
+| Administrador | administrador@novagest.test |
+
+Ornato e IGSS se cargan por migración. Dev añade Constancia de residencia.
+Cambiar DEMO_PASSWORD no cambia la contraseña de los usuarios ya creados.
+No borres la base para resolver un bloqueo: espera 15 minutos o pide al administrador que desbloquee la cuenta.
+
+### Estados del trámite
+
+| Estado | Próximo paso |
+| --- | --- |
+| Borrador | El ciudadano completa, edita, envía o elimina su borrador |
+| Enviado | El gestor lo toma para revisión |
+| En revisión | El gestor observa, rechaza o aprueba para pago |
+| Observado | El ciudadano corrige y envía la corrección |
+| Por pagar | El ciudadano adjunta comprobante; el gestor lo resuelve |
+| Finalizado | Pago validado; no hay más cambios de estado |
+| Rechazado | Decisión definitiva, con motivo |
 
 ## 1. Ciudadano
 
-**Que puede hacer:** registrarse, crear y seguir sus propios tramites, pagar con comprobante y llevar sus ingresos.
-**Que no puede:** ver tramites ni pagos de otras personas, ni validar sus propios pagos.
+### Registrarse
 
-### 1.1 Registrarse e iniciar sesion
-- Registro publico con nombre, correo y clave (`POST /api/auth/registro`). Queda con rol Ciudadano.
-- **[CAPTURA] Formulario de registro**
+Abre **Registro** (/registro), completa nombre, correo y contraseña y envía el formulario.
+El registro público crea una cuenta ciudadana. Para usar las cuentas demo, entra directamente en /ingresar.
 
-### 1.2 Crear un tramite
-1. Elegir el tipo: Boleto de ornato, Pago de IGSS o Constancia de residencia.
-2. Llenar los campos que pide ese tipo (por ejemplo, el ornato pide DPI de 13 digitos, ocupacion e ingreso mensual).
-3. Guardar: queda en **Borrador** y se puede editar.
-4. Enviar: pasa a **Enviado**. Desde ahi ya no se edita, salvo que el gestor lo observe.
-- API: `POST /api/tramites`, `PUT /api/tramites/{id}`, transicion `ENVIADO`.
-- **[CAPTURA] Formulario del tramite** · **[CAPTURA] Lista "Mis tramites"**
+### Crear, editar y enviar
 
-### 1.3 Corregir un tramite observado
-- El comentario del gestor aparece en el tramite. Corregir los datos y reenviar (vuelve a **En revision**).
-- **[CAPTURA] Tramite observado con el comentario**
+1. Entra en **Trámites** (/tramites), donde solo aparecen tus registros.
+2. Elige **Nuevo trámite** y selecciona un tipo.
+3. Completa los campos de ese tipo. Los mensajes junto a cada campo indican errores de formato u obligatoriedad.
+4. Guarda y revisa el detalle (`/tramites/<id>`). El trámite queda en **Borrador**.
+5. Si hace falta corregir, usa **Editar**. Solo puedes editar en Borrador u Observado.
+6. Pulsa **Enviar trámite**. El estado cambia a **Enviado** y queda a la espera de revisión.
 
-### 1.4 Pagar
-1. Cuando el tramite esta en **Por pagar**, subir el comprobante: PDF, JPG o PNG de hasta 5 MB.
-2. El pago queda **Pendiente** hasta que un gestor lo revise.
-3. Si el gestor lo rechaza, el tramite sigue en Por pagar y se puede subir otro comprobante.
-- API: `POST /api/tramites/{id}/pagos`, `GET /api/pagos`, `GET /api/pagos/{id}/comprobante`.
-- **[CAPTURA] Subir comprobante** · **[CAPTURA] Estado del pago**
+En la lista puedes filtrar por estado, tipo y fechas. Abre **Ver** para consultar los datos y el historial.
+El borrado de un borrador es lógico: conserva la evidencia. No se permite borrar trámites enviados.
 
-### 1.5 Ver el historial
-- Cada cambio de estado con fecha, quien lo hizo y su comentario. API: `GET /api/tramites/{id}/historial`.
-- **[CAPTURA] Historial del tramite**
+### Corregir observaciones
 
-### 1.6 Mis ingresos y proyeccion en otra moneda
-- Registrar, editar y eliminar ingresos propios (solo los ve su dueno).
-- Proyectar los ingresos en otra moneda con el tipo de cambio del Banguat. Si el Banguat no responde, se usa el ultimo valor guardado y se marca como estimado.
-- API: `/api/ingresos`, `GET /api/ingresos/proyeccion`, `GET /api/divisas/monedas`.
-- **[CAPTURA] Lista de ingresos** · **[CAPTURA] Proyeccion**
+Abre el trámite **Observado** y lee el comentario del gestor en el historial.
+Edita los datos, guarda y pulsa **Enviar corrección**. Vuelve a **En revisión**.
+Si no ves una acción, consulta el estado y el comentario; no intentes volver a enviar desde otro estado.
 
----
+### Adjuntar y consultar el pago (tarjeta 34)
+
+1. Espera a que el trámite esté **Por pagar**.
+2. En su detalle, busca la sección **Pago** y elige un PDF, JPG o PNG real de hasta 5 MB.
+3. Pulsa **Subir comprobante**. Verás **Pendiente** y el aviso de recepción.
+4. Usa **Descargar comprobante** para revisar el archivo enviado.
+5. Si fue rechazado, lee el motivo y adjunta uno nuevo. Solo puede haber un pago pendiente a la vez.
+6. Tras la validación del gestor, verás el pago **Validado** y el trámite **Finalizado**.
+
+No puedes validar pagos. Solo ves los comprobantes de tus propios trámites.
+El historial del detalle muestra cada cambio, la fecha, el actor y su comentario.
+
+### Ingresos y divisas
+
+La API permite registrar ingresos propios y proyectarlos a otras monedas, pero esta versión todavía no tiene pantallas para ello.
+Para una demostración técnica usa Swagger en dev: /api/ingresos, /api/ingresos/proyeccion y /api/divisas/monedas.
+Un valor de respaldo se identifica como estimado. Ningún otro rol puede consultar tus ingresos.
 
 ## 2. Gestor
 
-**Que puede hacer:** ver todos los tramites, revisarlos y moverlos de estado, y validar o rechazar pagos.
-**Que no puede:** crear tramites ni pagos, ni ver ingresos de nadie.
+### Revisar la bandeja (tarjeta 35)
 
-### 2.1 Bandeja de tramites
-- Lista de todos los tramites con filtros por estado, tipo y fechas, paginada.
-- API: `GET /api/tramites?estado=ENVIADO`.
-- **[CAPTURA] Bandeja del gestor con filtros**
+Abre **Bandeja** (/bandeja). Las colas son **Pendientes de atención**, **Por tomar**, **En revisión**, **Esperando pago** y **Observados**.
+Los registros más antiguos aparecen primero. Los contadores indican cuántos hay en cada cola.
+Abre un trámite y usa **Volver a la bandeja** para conservar la cola y la página.
+Para filtrar por tipo y fechas, usa **Trámites**.
 
-### 2.2 Revisar un tramite
-1. **Tomar** un tramite Enviado: pasa a En revision y queda asignado.
-2. Desde En revision:
-   - **Observar** (comentario obligatorio): vuelve al ciudadano para corregir.
-   - **Rechazar** (motivo obligatorio): es definitivo.
-   - **Aprobar**: pasa a Por pagar.
-- Solo aparecen las acciones validas para el estado actual (`destinosPosibles`). Una transicion no permitida responde 409.
-- API: `POST /api/tramites/{id}/transiciones`.
-- **[CAPTURA] Detalle del tramite con botones de accion**
+### Resolver una revisión
 
-### 2.3 Validar pagos
-1. Ver pagos pendientes y abrir el comprobante.
-2. **Validar**: el pago queda validado y el tramite pasa solo a **Finalizado**.
-3. **Rechazar** (comentario obligatorio): el ciudadano puede subir otro comprobante.
-- Nadie valida un pago que registro el mismo (segregacion de funciones).
-- API: `GET /api/pagos?estado=PENDIENTE`, `POST /api/pagos/{id}/validacion`.
-- **[CAPTURA] Lista de pagos pendientes** · **[CAPTURA] Validar o rechazar**
+1. En **Por tomar**, abre un trámite Enviado y pulsa **Tomar para revisión**.
+2. En **En revisión**, revisa los datos.
+3. Para pedir correcciones, pulsa **Observar**, escribe un comentario y confirma.
+4. Para denegar definitivamente, pulsa **Rechazar**, escribe el motivo y confirma.
+5. Cuando cumpla los requisitos, pulsa **Aprobar y pasar a pago**.
 
----
+Solo aparecen las transiciones que devuelve la API para tu cuenta y el estado actual.
+Un cambio concurrente puede provocar un conflicto; actualiza el detalle y vuelve a comprobar el estado.
+
+### Validar o rechazar un comprobante (tarjeta 36)
+
+1. Abre **Pagos pendientes** (/pagos). La lista contiene solo pagos pendientes, ordenados por antigüedad y con paginación. También puedes entrar desde **Bandeja → Esperando pago** al detalle del trámite.
+2. En **Pago → Comprobantes enviados**, descarga y revisa el comprobante pendiente.
+3. Pulsa **Validar pago**. La confirmación explica que el trámite finalizará.
+4. Añade un comentario opcional y pulsa **Confirmar validación**, o **Cancelar**.
+5. Para rechazar, pulsa **Rechazar pago**, escribe un motivo de hasta 500 caracteres y pulsa **Confirmar rechazo**.
+6. Al validar, se actualizan el pago, el estado del trámite, sus acciones y el historial.
+7. Al rechazar, el trámite sigue **Por pagar** y el ciudadano puede enviar un nuevo comprobante.
+
+No puedes resolver un pago que registraste tú, aunque tengas permiso de edición.
+Un pago validado o rechazado ya no ofrece botones de decisión.
+Si otro gestor ya lo resolvió, aparece un conflicto: usa **Actualizar estado del pago** antes de continuar.
+Un error de permisos no significa que se haya guardado la decisión.
 
 ## 3. Auditor
 
-**Que puede hacer:** consultar tramites, tipos, pagos, usuarios, roles y la bitacora.
-**Que no puede:** crear, editar ni eliminar nada (solo lectura), ni ver ingresos.
+Entra en **Trámites** o **Bandeja**, abre el detalle y consulta los datos, el historial y los comprobantes.
+Puedes consultar **Usuarios** y **Roles** con sus permisos. Las opciones de escritura no aparecen.
+No puedes editar trámites, validar pagos ni acceder a ingresos.
 
-### 3.1 Bitacora
-- Cada creacion, edicion, eliminacion y cambio de estado, con quien, cuando, el valor anterior y el nuevo.
-- Filtros por recurso, accion y fechas. Nadie puede editarla ni borrarla.
-- API: `GET /api/bitacora`.
-- **[CAPTURA] Bitacora con filtros**
-
-### 3.2 Consultas
-- Tramites con su historial, pagos con su comprobante, usuarios y roles con sus permisos.
-- API: `GET /api/tramites`, `GET /api/pagos`, `GET /api/usuarios`, `GET /api/roles`.
-- **[CAPTURA] Detalle de un tramite visto por el auditor**
-
----
+La pantalla de bitácora aún no está implementada en esta versión.
+En dev puedes consultar GET /api/bitacora desde Swagger con tu cuenta: filtra por recurso, acción y fechas.
+La bitácora registra el antes y después de las escrituras. Los datos personales de la vista del auditor pueden estar enmascarados.
+No existe una opción para editar o borrar la bitácora.
 
 ## 4. Administrador
 
-**Que puede hacer:** administrar usuarios, roles y tipos de tramite.
-**Que no puede:** ver ingresos de nadie, cambiar su propio rol ni dejar el sistema sin administradores.
+### Usuarios
 
-### 4.1 Usuarios
-- Crear usuarios, asignar o quitar roles, desactivar, desbloquear tras intentos fallidos y eliminar (borrado logico).
-- API: `/api/usuarios`, `POST /api/usuarios/{id}/desbloquear`.
-- **[CAPTURA] Lista de usuarios** · **[CAPTURA] Asignar roles**
+En **Usuarios** (/usuarios), filtra y consulta las cuentas.
+Usa **Nuevo usuario** para crear una cuenta y seleccionar sus roles.
+Abre **Editar** para cambiar sus datos, activar/desactivar y asignar o quitar roles.
+En el listado puedes activar o desactivar cuentas y desbloquear las bloqueadas. El borrado de usuarios se realiza mediante la API; esta pantalla no lo ofrece.
+No puedes cambiar tus propios roles ni dejar al sistema sin administradores.
 
-### 4.2 Roles y permisos
-- Ver los permisos (recurso + accion) y armar roles con ellos, sin tocar codigo.
-- API: `/api/roles`, `GET /api/roles/permisos`.
-- **[CAPTURA] Rol con sus permisos**
+### Roles
 
-### 4.3 Tipos de tramite
-- Crear y editar tipos, su monto y los campos que pide cada uno (texto, numero, fecha o si/no; obligatorio, patron y minimo).
-- Los montos de Ornato e IGSS vienen en 0.00 hasta que se definan.
-- API: `/api/tipos-tramite`.
-- **[CAPTURA] Formulario de tipo de tramite con sus campos**
+**Roles** (/roles) muestra la descripción, alcance y permisos agrupados de cada rol.
+Esta pantalla es de consulta. La creación o modificación de roles se realiza mediante la API con los permisos correspondientes.
 
----
+### Tipos de trámite
 
-## Preguntas frecuentes
+En **Tipos de trámite** (/tipos), crea o edita un tipo con nombre, descripción, monto y campos.
+Los campos admiten texto, número, fecha y sí/no; configura obligatoriedad y restricciones donde corresponda.
+Ornato e IGSS comienzan con monto 0.00; el administrador debe definir el monto antes de una demostración de cobro con costo.
+Los cambios afectan a los formularios de nuevos trámites. No elimines tipos usados en una demostración sin revisar su impacto.
 
-| Pregunta | Respuesta |
-|---|---|
-| Me dice "credenciales invalidas" | Revisar correo y clave. Tras 5 fallos la cuenta se bloquea 15 minutos; el administrador puede desbloquearla. |
-| No puedo editar mi tramite | Solo se edita en Borrador u Observado. |
-| Mi comprobante no se acepta | Debe ser PDF, JPG o PNG real y pesar 5 MB o menos. |
-| No veo un tramite que deberia ver | El ciudadano solo ve los suyos; los demas roles ven todos. |
+## Problemas frecuentes
+
+| Situación | Qué hacer |
+| --- | --- |
+| Credenciales inválidas | Revisa el correo y la contraseña. Si hubo cinco fallos, espera 15 minutos o solicita desbloqueo |
+| Sesión vencida | Inicia sesión de nuevo; evita repetir la misma operación sin comprobar su resultado |
+| No puedo editar | El ciudadano solo edita en Borrador u Observado |
+| Comprobante rechazado por formato | Usa un PDF, JPG o PNG real de hasta 5 MB |
+| Pago ya resuelto | Actualiza el estado; otra persona pudo tomar la decisión |
+| No veo un botón o enlace | Comprueba los permisos y el estado con el administrador |
+| No conecta con el servidor | Comprueba que la API esté activa; en local consulta /actuator/health |
+
+El [guion de demostración](guion-demo.md) recorre el flujo con estas pantallas.
+
+## Capturas por rol
+
+Estas capturas muestran el frontend real ejecutado en navegador con una API simulada y datos ficticios. Ilustran los controles; no acreditan el backend desplegado ni un ensayo cronometrado.
+
+### Acceso
+
+![Pantalla de inicio de sesión](capturas/01-ingresar.png)
+
+### Ciudadano: trámites, borrador y comprobante
+
+![Lista de trámites propios](capturas/02-ciudadano-tramites.png)
+![Detalle del borrador](capturas/03-ciudadano-borrador.png)
+![Comprobante pendiente del ciudadano](capturas/04-ciudadano-pago.png)
+
+### Gestor: pendientes y confirmación
+
+![Lista de pagos pendientes](capturas/05-gestor-pendientes.png)
+![Confirmación antes de validar un pago](capturas/06-gestor-confirmacion.png)
+
+### Auditor: consulta sin acciones de escritura
+
+![Detalle consultado por el auditor](capturas/07-auditor-detalle.png)
+
+### Administrador: usuarios y permisos
+
+![Administración de usuarios](capturas/08-administrador-usuarios.png)
+![Consulta de roles y permisos](capturas/09-administrador-roles.png)

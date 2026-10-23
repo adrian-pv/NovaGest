@@ -219,7 +219,15 @@ function Detalle({ id }: { id: number }) {
         {Boolean(errorAccion) && <AvisoError error={errorAccion} />}
       </section>
 
-      <SeccionPago tramite={tramite} tipo={tipo} />
+      <SeccionPago
+        tramite={tramite}
+        tipo={tipo}
+        alResolver={() => {
+          carga.recargar()
+          historial.recargar()
+          acciones.recargar()
+        }}
+      />
 
       <section className="tarjeta seccion" aria-labelledby="titulo-historial">
         <h2 id="titulo-historial">Historial</h2>

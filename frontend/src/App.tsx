@@ -1,6 +1,11 @@
 import { Route, Routes } from 'react-router-dom'
 import Bitacora from './bitacora/Bitacora'
 import Diseno from './componentes/Diseno'
+import EditarIngreso from './ingresos/EditarIngreso'
+import ListaIngresos from './ingresos/ListaIngresos'
+import NuevoIngreso from './ingresos/NuevoIngreso'
+import Proyeccion from './ingresos/Proyeccion'
+import TipoCambio from './ingresos/TipoCambio'
 import Ingresar from './paginas/Ingresar'
 import Inicio from './paginas/Inicio'
 import NoEncontrado from './paginas/NoEncontrado'
@@ -19,6 +24,7 @@ import EditarUsuario from './usuarios/EditarUsuario'
 import ListaRoles from './usuarios/ListaRoles'
 import ListaUsuarios from './usuarios/ListaUsuarios'
 import NuevoUsuario from './usuarios/NuevoUsuario'
+import PagosPendientes from './pagos/PagosPendientes'
 
 /**
  * Rutas de la aplicación. Todas se dibujan dentro del marco común (Diseno). Las que exigen sesión van dentro de
@@ -38,6 +44,9 @@ export default function App() {
         <Route element={<RutaProtegida permiso="tramite:leer" alcanceTotal />}>
           <Route path="/bandeja" element={<Bandeja />} />
         </Route>
+        <Route element={<RutaProtegida permiso="pago:editar" alcanceTotal />}>
+          <Route path="/pagos" element={<PagosPendientes />} />
+        </Route>
         <Route element={<RutaProtegida permiso="tramite:leer" />}>
           <Route path="/tramites" element={<ListaTramites />} />
           <Route path="/tramites/:id" element={<DetalleTramite />} />
@@ -47,6 +56,17 @@ export default function App() {
         </Route>
         <Route element={<RutaProtegida permiso="tramite:editar" />}>
           <Route path="/tramites/:id/editar" element={<EditarTramite />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="ingreso:leer" />}>
+          <Route path="/ingresos" element={<ListaIngresos />} />
+          <Route path="/ingresos/proyeccion" element={<Proyeccion />} />
+          <Route path="/divisas" element={<TipoCambio />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="ingreso:crear" />}>
+          <Route path="/ingresos/nuevo" element={<NuevoIngreso />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="ingreso:editar" />}>
+          <Route path="/ingresos/:id/editar" element={<EditarIngreso />} />
         </Route>
         <Route element={<RutaProtegida permiso="tipo_tramite:editar" />}>
           <Route path="/tipos" element={<ListaTipos />} />

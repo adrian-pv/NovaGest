@@ -3,6 +3,25 @@ import type { Pagina } from './tipos'
 import type { EstadoTramite } from './tramites'
 
 export type EstadoPago = 'PENDIENTE' | 'VALIDADO' | 'RECHAZADO'
+export type DecisionPago = 'VALIDAR' | 'RECHAZAR'
+
+export function listarPagosPendientes(page: number, senal?: AbortSignal): Promise<Pagina<Pago>> {
+  return solicitar<Pagina<Pago>>('/api/pagos', {
+    consulta: { estado: 'PENDIENTE', page, sort: 'creadoEn,asc' },
+    senal,
+  })
+}
+
+export function resolverPago(
+  id: number,
+  decision: DecisionPago,
+  comentario?: string,
+): Promise<Pago> {
+  return solicitar<Pago>(`/api/pagos/${id}/validacion`, {
+    metodo: 'POST',
+    cuerpo: { decision, ...(comentario?.trim() ? { comentario: comentario.trim() } : {}) },
+  })
+}
 
 export interface Pago {
   id: number

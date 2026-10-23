@@ -15,7 +15,8 @@ class Backend(BaseHTTPRequestHandler):
         body = json.dumps({"path": self.path, "backend": self.server.server_port,
                            "xff": self.headers.get("X-Forwarded-For"),
                            "xfh": self.headers.get("X-Forwarded-Host"),
-                           "xfp": self.headers.get("X-Forwarded-Proto")}).encode()
+                           "xfp": self.headers.get("X-Forwarded-Proto"),
+                           "xfport": self.headers.get("X-Forwarded-Port")}).encode()
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -119,6 +120,8 @@ try:
                     assert status == 200 and b"<title>" in body, (status, body)
                     assert headers["X-Frame-Options"] == "DENY"
                     assert "frame-ancestors 'none'" in headers["Content-Security-Policy"]
+                    # Sin el puerto propio el backend rechaza los POST del navegador (CORS 403).
+                    assert data["xfport"] == str(port), data
                 assert data["xfp"] == "http", data
             statuses = [request(ports[0], "/api/auth/login", "POST")[0] for _ in range(15)]
             assert 200 in statuses and 429 in statuses, statuses
@@ -128,6 +131,7 @@ try:
                 data = json.loads(body)
                 assert status == 200 and data["backend"] == servers[index].server_port, (status, body)
                 assert data["xff"] == "198.51.100.20" and data["xfp"] == "https", data
+                assert data["xfport"] == "443", data
                 assert request(port, "/actuator/env")[0] == 404
             visitante = {"CF-Connecting-IP": "198.51.100.30"}
             statuses = [request(ports[3], "/api/auth/login", "POST", visitante)[0] for _ in range(15)]
@@ -136,7 +140,7 @@ try:
             assert otro == 200, otro
             print("OK: entornos separados; /api y query preservados; health; /actuator restringido; "
                   "frontend con fallback SPA y CSP; cabeceras API sin duplicar; XFF saneado; login 429; "
-                  "tunel con IP del visitante, proto https y limite por visitante")
+                  "tunel con IP del visitante, proto https y limite por visitante; X-Forwarded-Port")
         finally:
             if process.poll() is None:
                 process.terminate()
