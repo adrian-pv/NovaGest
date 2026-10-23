@@ -1,4 +1,5 @@
 import { Route, Routes } from 'react-router-dom'
+import Bitacora from './bitacora/Bitacora'
 import Diseno from './componentes/Diseno'
 import EditarIngreso from './ingresos/EditarIngreso'
 import ListaIngresos from './ingresos/ListaIngresos'
@@ -85,6 +86,9 @@ export default function App() {
         </Route>
         <Route element={<RutaProtegida permiso="rol:leer" />}>
           <Route path="/roles" element={<ListaRoles />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="bitacora:leer" />}>
+          <Route path="/bitacora" element={<Bitacora />} />
         </Route>
         <Route path="*" element={<NoEncontrado />} />
       </Route>
