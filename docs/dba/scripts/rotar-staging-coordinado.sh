@@ -4,6 +4,8 @@
 # PostgreSQL recibe el verificador SCRAM, nunca la clave, y Adrian toma la clave del mismo archivo.
 # Las claves no pasan por pantalla, argumentos, variables del shell, logs, reportes ni Git.
 # Nunca lee/escribe .env/app.env, ni llama Docker, tramites-ctl o servicios.
+# SEGURIDAD: no usar la version anterior sin PGOPTIONS y guardia de logging.
+# La guardia siguiente debe acreditar los cinco ajustes antes de generar claves.
 set +x
 set -euo pipefail
 umask 077
@@ -100,8 +102,24 @@ directorio_seguro
 rotados=''
 trap 'rc=$?; rm -f -- "$sec/pgpass"; if (( rc != 0 )); then printf "DETENIDO. Roles cuyo cambio se inicio: %s. Claves vigentes en %s (solo root). Mantener pausa, NO entregar a Adrian; recuperar con rotar-migrador/rotar-app.\n" "${rotados:-ninguno}" "$sec" >&2; fi' EXIT
 
-PSQL=(runuser -u postgres -- env -u PGPASSWORD -u PGSERVICE -u PGSERVICEFILE -u PGHOSTADDR PGPASSFILE=/dev/null
+PSQL=(runuser -u postgres -- env -u PGPASSWORD -u PGSERVICE -u PGSERVICEFILE -u PGHOSTADDR PGPASSFILE=/dev/null PGOPTIONS='-clog_statement=none -clog_min_duration_statement=-1 -clog_min_error_statement=panic -clog_min_duration_sample=-1 -clog_transaction_sample_rate=0'
   psql -X -q -v ON_ERROR_STOP=1 -h /var/run/postgresql -p 5432 -U postgres -d tramites_pruebas)
+# Consulta sin secretos: si PGOPTIONS no se aplico, abortar ANTES de generar o enviar un verificador.
+if ! logging_seguro="$("${PSQL[@]}" -At <<'SQL_LOG_GUARD'
+BEGIN READ ONLY;
+SELECT current_database()='tramites_pruebas'
+  AND current_setting('log_statement')='none'
+  AND current_setting('log_min_duration_statement')='-1'
+  AND current_setting('log_min_error_statement')='panic'
+  AND current_setting('log_min_duration_sample')='-1'
+  AND current_setting('log_transaction_sample_rate')::numeric=0;
+ROLLBACK;
+SQL_LOG_GUARD
+)"; then
+  echo 'ERROR: no se pudo verificar logging seguro; no se generaron claves.' >&2
+  exit 1
+fi
+[[ $logging_seguro == t ]] || { echo 'ERROR: logging inseguro; no se generaron claves.' >&2; exit 1; }
 for rol in "${roles[@]}"; do
   var=$(variable "$rol")
   rm -f -- "$sec/$var.nuevo"
@@ -119,7 +137,7 @@ almacenada = hashlib.sha256(hmac.digest(k, b'Client Key', 'sha256')).digest()
 servidor = hmac.digest(k, b'Server Key', 'sha256')
 with os.fdopen(os.open(destino, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as f:
     f.write(clave + '\n')
-print('BEGIN;\nSET LOCAL log_statement = none;\nSET LOCAL log_min_duration_statement = -1;')
+print('BEGIN;\nSET LOCAL log_statement = none;\nSET LOCAL log_min_duration_statement = -1;\nSET LOCAL log_min_error_statement = panic;\nSET LOCAL log_min_duration_sample = -1;\nSET LOCAL log_transaction_sample_rate = 0;')
 print(f"ALTER ROLE {rol} PASSWORD 'SCRAM-SHA-256${n}:{b64(sal)}${b64(almacenada)}:{b64(servidor)}';\nCOMMIT;")
 PY
   mv -f -- "$sec/$var.nuevo" "$sec/$var"
