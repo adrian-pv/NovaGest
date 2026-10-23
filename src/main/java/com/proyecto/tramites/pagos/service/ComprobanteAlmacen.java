@@ -5,12 +5,15 @@ import com.proyecto.tramites.comun.excepcion.DatosInvalidosException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
@@ -23,6 +26,8 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @Component
 public class ComprobanteAlmacen {
+
+	private static final Logger LOG = LoggerFactory.getLogger(ComprobanteAlmacen.class);
 
 	public static final long TAMANO_MAXIMO = 5L * 1024 * 1024;
 
@@ -64,9 +69,18 @@ public class ComprobanteAlmacen {
 		return new Almacenado(nombre, sha256(contenido), tipo.tipoMime(), contenido.length);
 	}
 
+	/**
+	 * Lee el archivo. Con dos instancias que sincronizan sus carpetas, un comprobante recien subido en la otra puede no
+	 * haber llegado todavia: eso es un 409 con un mensaje claro (el pago existe, el archivo aun no), no un 500.
+	 */
 	public byte[] leer(String nombre) {
 		try {
 			return Files.readAllBytes(resolver(nombre));
+		}
+		catch (NoSuchFileException e) {
+			LOG.warn("Comprobante {} no esta en la carpeta de esta instancia (sincronizacion pendiente o perdido)", nombre);
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"El comprobante todavia no esta disponible en este servidor. Si se acaba de subir, intenta de nuevo en unos segundos");
 		}
 		catch (IOException e) {
 			throw new UncheckedIOException("No se pudo leer el comprobante guardado", e);

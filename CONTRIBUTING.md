@@ -79,3 +79,11 @@ Cada migracion tiene una version unica: `V<numero>__descripcion.sql`. Si dos per
 - Si al actualizar tu rama aparece un choque, **renumera la tuya** a la siguiente libre; no cambies la de la otra persona.
 - La prueba `MigracionesTests` falla de inmediato si hay una version repetida, sin necesitar Docker.
 - Nunca se edita una migracion que ya se mezclo en `develop`: se agrega una nueva.
+
+### Migraciones compatibles hacia atras (expandir y despues contraer)
+Con dos instancias sobre la misma base (ver `docs/dos-instancias.md`), la instancia de Ubuntu migra primero y la de Windows sigue unos minutos con el codigo anterior. Ese codigo viejo tiene que seguir funcionando con el esquema nuevo. Por eso un cambio de esquema se hace en **dos despliegues**:
+1. **Expandir** (este despliegue): agregar tablas, o columnas `NULL` o con `DEFAULT`, o indices. El codigo nuevo ya las usa; el viejo las ignora.
+2. **Contraer** (un despliegue posterior, cuando las dos instancias ya corren el codigo nuevo): borrar lo que ya no se usa, volver `NOT NULL` una columna que ya se llena, renombrar.
+- **No** renombrar ni borrar columnas o tablas, ni agregar `NOT NULL` sin `DEFAULT`, ni cambiar el tipo de una columna, en el mismo despliegue en que el codigo deja de usarlas.
+- Si el cambio no se puede hacer en dos pasos, avisar al DBA y a despliegue antes de mezclar: habra que parar la instancia vieja durante la actualizacion.
+- Hibernate valida el esquema al arrancar (`ddl-auto=validate`): una columna que el codigo viejo espera y ya no existe impide que esa instancia arranque.

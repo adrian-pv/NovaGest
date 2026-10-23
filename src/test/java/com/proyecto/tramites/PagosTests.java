@@ -350,6 +350,22 @@ class PagosTests {
 		assertThat(enviar(HttpMethod.GET, "/api/pagos/" + pago + "/comprobante", null, null).getStatus()).isEqualTo(401);
 	}
 
+	@Test
+	void siElArchivoAunNoLlegoALaCarpetaDeEstaInstanciaLaDescargaEs409ConMensajeClaro() throws Exception {
+		// Dos instancias sincronizan sus carpetas con demora: el pago ya esta en la base pero el archivo aun no llega
+		String ana = tokenCon("ana@demo.com", "CIUDADANO");
+		long pago = JsonPath.<Number>read(subir(ana, tramiteEn(ana, "POR_PAGAR"), "foto.png", "image/png", PNG)
+				.getContentAsString(), "$.id").longValue();
+		String archivo = jdbc.queryForObject("SELECT comprobante_archivo FROM pago WHERE id = ?", String.class, pago);
+		Files.delete(CARPETA.resolve(archivo));
+
+		MockHttpServletResponse r = enviar(HttpMethod.GET, "/api/pagos/" + pago + "/comprobante", ana, null);
+
+		assertThat(r.getStatus()).isEqualTo(409);
+		assertThat(r.getContentType()).contains("problem+json");
+		assertThat(r.getContentAsString()).contains("todavia no esta disponible").doesNotContain(archivo);
+	}
+
 	// ---------- Validar o rechazar ----------
 
 	@Test
