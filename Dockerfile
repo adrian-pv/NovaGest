@@ -11,6 +11,9 @@ RUN ./mvnw -q -DskipTests package
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 RUN groupadd --system novagest && useradd --system --gid novagest novagest
+# /usr/bin/pebble (gestor de servicios de la imagen base) no se usa: la app arranca con java -jar. Su Go stdlib trae 4 CVE HIGH
+# (hallazgo de Raul); se quita en vez de esperar una base nueva. Revisar si la base ya trae un pebble parchado.
+RUN rm -f /usr/bin/pebble
 COPY --from=build /app/target/*.jar app.jar
 RUN mkdir -p /data/comprobantes && chown novagest:novagest /data/comprobantes
 ENV COMPROBANTES_DIR=/data/comprobantes
