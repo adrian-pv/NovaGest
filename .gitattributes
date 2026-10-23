@@ -1,2 +1,5 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+*.sh text eol=lf
+*.sql text eol=lf
+/docs/dba/scripts/SHA256SUMS text eol=lf

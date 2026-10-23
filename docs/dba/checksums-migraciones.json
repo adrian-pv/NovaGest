@@ -1,0 +1,18 @@
+{
+  "ref": "origin/develop",
+  "commit": "ae014ddc8ea654a3d5e71e510755f1c363feccda",
+  "migrations": [
+    {
+      "version": "9",
+      "path": "src/main/resources/db/migration/V9__pagos.sql",
+      "flyway_crc32": -956879505,
+      "sha256_git_blob": "37e447bf4f1574836ace14935e4317204f12b8eb94a800b3d92a461339e04468"
+    },
+    {
+      "version": "10",
+      "path": "src/main/resources/db/migration/V10__tipo_cambio.sql",
+      "flyway_crc32": -130265834,
+      "sha256_git_blob": "65652efa5a13083c9b2a9d42f3d7fb55eac1f989270802b4ee7fe96cc416f7c9"
+    }
+  ]
+}
