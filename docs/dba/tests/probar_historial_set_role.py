@@ -104,7 +104,7 @@ def main():
         value = Path(path).resolve().as_posix()
         return '/' + value[0].lower() + value[2:] if os.name == 'nt' else value
 
-    def wrapper(name, expected):
+    def wrapper(name, expected, hook=None):
         # El texto del wrapper es real; solo se adapta el entorno root/socket/lock
         # a este fixture local ya identificado. No sudo, servidor, Docker ni /opt.
         copy = Path(tempfile.mkdtemp(prefix='wrapper-', dir=work))
@@ -121,10 +121,14 @@ def main():
         for old, new in substitutions:
             assert old in text
             text = text.replace(old, new)
+        if hook:
+            needle = '"${PSQL[@]}" <"$dir/revocar-historial-staging.sql"\n'
+            assert text.count(needle) == 1
+            text = text.replace(needle, needle + '"${PSQL[@]}" -c "$GANCHO"\n')
         file = copy / 'corregir.sh'
         file.write_text(text, encoding='utf-8', newline='\n')
         p = subprocess.run([bash, posix(file), '--aplicar'], capture_output=True, timeout=60,
-                           env=dict(env, PATH=str(args.pg_bin) + os.pathsep + os.environ['PATH']),
+                           env=dict(env, PATH=str(args.pg_bin) + os.pathsep + os.environ['PATH'], GANCHO=hook or ''),
                            creationflags=flags)
         check(name, p.returncode == expected and (b'OK: permisos restringidos' in p.stdout) == (expected == 0))
 
@@ -277,6 +281,11 @@ def main():
         reset()
         wrapper('wrapper real aplica solo REVOKE y termina con OK', 0)
         sql(guard)
+        for name, hook in [
+            ('tercero recibe REFERENCES en negocio', 'GRANT REFERENCES ON tramites.pago TO lector_alterno'),
+            ('tercero recibe permiso solo columna', 'GRANT UPDATE(id) ON tramites.tipo_cambio TO lector_alterno')]:
+            reset()
+            wrapper('wrapper detecta cambio ajeno: ' + name, 1, hook)
         completed = True
     finally:
         if started:

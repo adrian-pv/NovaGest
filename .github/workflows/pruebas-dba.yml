@@ -23,6 +23,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: SQL real y logging en contenedor efimero sin puertos publicados
         shell: bash
         run: |
