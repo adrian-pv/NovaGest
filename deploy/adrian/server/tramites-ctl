@@ -7,12 +7,20 @@
 #   rollback <staging|production>
 #   status   <staging|production>
 #
+# Frontend (opcional, si .env trae FRONTEND_IMAGE): deploy y rollback también publican el frontend
+# de la MISMA etiqueta. Se baja la imagen <FRONTEND_IMAGE>:<etiqueta> (solo archivos), se copia a
+# /var/www/novagest/releases/<entorno>/<etiqueta> y, cuando el backend quedó UP, se cambia de forma
+# atómica el enlace /var/www/novagest/<entorno> (el root de Nginx) a esa carpeta. Se conservan
+# varias versiones para rollback. No hace falta otro comando ni cambia la llave del pipeline.
+#
 # Uso manual en el servidor:  sudo -u deploy /opt/tramites/bin/tramites-ctl status staging
 set -euo pipefail
 
 BASE="${TRAMITES_BASE:-/opt/tramites}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-180}"
 KEEP_PREDEPLOY_BACKUPS="${KEEP_PREDEPLOY_BACKUPS:-10}"
+WEB_BASE="${TRAMITES_WEB_BASE:-/var/www/novagest}"
+KEEP_FRONTEND_RELEASES="${KEEP_FRONTEND_RELEASES:-5}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 log() { echo "[$(date '+%F %T')] $*"; }
@@ -121,6 +129,73 @@ backup_before_migration() {
   LAST_BACKUP="$file"
 }
 
+# ---------- frontend ----------
+# Root de Nginx: $WEB_BASE/<entorno> es un ENLACE a releases/<entorno>/<etiqueta>.
+web_link()     { echo "$WEB_BASE/$ENVIRONMENT"; }
+web_releases() { echo "$WEB_BASE/releases/$ENVIRONMENT"; }
+frontend_active() { readlink "$(web_link)" 2>/dev/null || true; }
+
+# Deja lista (sin publicarla) la carpeta del frontend de la etiqueta. Devuelve 0 si quedó lista
+# o si este entorno no usa frontend (sin FRONTEND_IMAGE); 1 si no se pudo.
+prepare_frontend() {
+  local tag="$1" image rel tmp cid
+  FRONTEND_READY=""
+  image="$(envval FRONTEND_IMAGE)"
+  [[ -n "$image" ]] || return 0
+  # El root debe ser un enlace (o no existir). Si es una carpeta real, cambiarla es un paso manual
+  # único (ver DESPLIEGUE.md, "Frontend"); no se toca para no dejar a Nginx sin archivos.
+  if [[ -e "$(web_link)" && ! -L "$(web_link)" ]]; then
+    log "frontend: $(web_link) es una carpeta, no un enlace; falta la migración inicial (DESPLIEGUE.md, 'Frontend')"
+    return 1
+  fi
+  rel="$(web_releases)/$tag"
+  if [[ -f "$rel.ok" && -s "$rel/index.html" ]]; then
+    FRONTEND_READY="$tag"; return 0
+  fi
+  docker pull -q "$image:$tag" >/dev/null || { log "frontend: no se pudo bajar $image:$tag"; return 1; }
+  rm -rf -- "$rel" "$rel.ok"
+  tmp="$(mktemp -d "$(web_releases)/.nuevo-$tag.XXXXXX")" || { log "frontend: no se pudo crear carpeta en $(web_releases)"; return 1; }
+  cid="$(docker create "$image:$tag")" || { rm -rf -- "$tmp"; return 1; }
+  if ! docker cp "$cid:/sitio/." "$tmp/" >/dev/null; then
+    docker rm -f "$cid" >/dev/null 2>&1 || true; rm -rf -- "$tmp"; log "frontend: docker cp falló"; return 1
+  fi
+  docker rm -f "$cid" >/dev/null 2>&1 || true
+  [[ -s "$tmp/index.html" ]] || { rm -rf -- "$tmp"; log "frontend: la imagen $tag no trae index.html"; return 1; }
+  # Nginx lee como www-data: carpetas 755, archivos 644, dueño deploy (quien corre este script).
+  { find "$tmp" -type d -exec chmod 755 {} + && find "$tmp" -type f -exec chmod 644 {} +; } \
+    || { rm -rf -- "$tmp"; log "frontend: no se pudieron fijar permisos"; return 1; }
+  mv -T -- "$tmp" "$rel" || { rm -rf -- "$tmp"; log "frontend: no se pudo mover a $rel"; return 1; }
+  docker image inspect -f '{{.Id}}' "$image:$tag" >"$rel.ok" || return 1
+  FRONTEND_READY="$tag"
+}
+
+# Cambia el root de Nginx a la carpeta preparada, de forma atómica (enlace nuevo + rename).
+activate_frontend() {
+  local tag="$1" link nuevo
+  [[ -n "$(envval FRONTEND_IMAGE)" ]] || return 0
+  [[ "$FRONTEND_READY" == "$tag" ]] || { log "frontend: la versión $tag no está preparada; se mantiene $(frontend_active)"; return 1; }
+  link="$(web_link)"
+  nuevo="$WEB_BASE/.$ENVIRONMENT.nuevo"
+  ln -sfn -- "releases/$ENVIRONMENT/$tag" "$nuevo" || { log "frontend: no se pudo crear $nuevo"; return 1; }
+  mv -T -- "$nuevo" "$link" || { rm -f -- "$nuevo"; log "frontend: no se pudo cambiar $link"; return 1; }
+  audit "frontend $tag publicado"
+  log "frontend: $link -> releases/$ENVIRONMENT/$tag"
+  prune_frontend
+}
+
+# Conserva las últimas N versiones; nunca borra la activa ni la de previous_tag.
+prune_frontend() {
+  local activa prev d name dir
+  dir="$(web_releases)"
+  activa="$(basename -- "$(frontend_active)")"; prev="$(previous_tag)"
+  # shellcheck disable=SC2012
+  ls -1dt "$dir"/*/ 2>/dev/null | tail -n +$((KEEP_FRONTEND_RELEASES + 1)) | while read -r d; do
+    name="$(basename -- "$d")"
+    [[ -n "$name" && "$name" != "$activa" && "$name" != "$prev" ]] || continue
+    rm -rf -- "${dir:?}/$name" "${dir:?}/$name.ok"
+  done
+}
+
 # Levanta la etiqueta pedida; si no queda sana, vuelve sola a la que estaba.
 deploy_tag() {
   local tag="$1" kind="$2" before
@@ -128,6 +203,12 @@ deploy_tag() {
   LAST_BACKUP=""
 
   log "$kind en $ENVIRONMENT: ${before:-(nada)} -> $tag"
+  # El frontend se prepara ANTES de tocar el backend: si falta en un deploy, no se cambia nada.
+  # En un rollback no se bloquea: si esa versión no tiene frontend, se queda el que está publicado.
+  if ! prepare_frontend "$tag"; then
+    [[ "$kind" == rollback ]] || { audit "$kind FALLÓ $tag (frontend)"; die "no se pudo preparar el frontend de $tag; no se cambió nada"; }
+    log "frontend: rollback sin frontend de $tag; se mantiene $(frontend_active)"
+  fi
   export APP_TAG="$tag"            # compose lo necesita en TODAS sus llamadas (ps, logs, up)
   "${COMPOSE[@]}" pull -q app
   backup_before_migration "$tag"
@@ -142,6 +223,9 @@ deploy_tag() {
     fi
     audit "$kind OK $tag (antes: ${before:-ninguna})"
     log "OK: $ENVIRONMENT corre $tag"
+    if [[ -n "$FRONTEND_READY" ]]; then
+      activate_frontend "$tag" || { audit "frontend FALLÓ $tag"; return 1; }
+    fi
     return 0
   fi
 
@@ -203,6 +287,9 @@ case "$ACTION" in
     echo -n "health 127.0.0.1:${port}: "
     curl -fsS --max-time 3 "http://127.0.0.1:${port}/actuator/health" 2>/dev/null || echo "sin respuesta"
     echo
+    if [[ -n "$(envval FRONTEND_IMAGE)" ]]; then
+      echo "frontend:  $(web_link) -> $(frontend_active || true)"
+    fi
     echo "--- últimos movimientos ---"
     tail -n 10 "$AUDIT_LOG" 2>/dev/null || true
     ;;
