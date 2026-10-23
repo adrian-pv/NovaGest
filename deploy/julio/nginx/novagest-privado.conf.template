@@ -14,5 +14,6 @@ server {
     error_log /var/log/nginx/novagest-${NG_ENTORNO}.error.log warn;
 
     set $novagest_proto $scheme;
+    set $novagest_port $server_port;
     include /etc/nginx/snippets/novagest-${NG_ENTORNO}-rutas.conf;
 }
