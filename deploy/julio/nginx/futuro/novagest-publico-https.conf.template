@@ -19,6 +19,10 @@ server {
     access_log /var/log/nginx/novagest-${NG_ENTORNO}-publico.access.log;
     error_log /var/log/nginx/novagest-${NG_ENTORNO}-publico.error.log warn;
 
+    # Variables que usa novagest-proxy-headers.conf.
+    set $novagest_proto https;
+    set $novagest_port 443;
+
     location = /api/auth/login {
         limit_req zone=novagest_login burst=5 nodelay;
         limit_req_status 429;
