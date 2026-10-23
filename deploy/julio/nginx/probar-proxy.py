@@ -65,6 +65,8 @@ try:
             www = root / f"www-{entorno}"
             www.mkdir()
             (www / "index.html").write_text(f"<!doctype html><title>{entorno}</title>")
+            (www / "assets").mkdir()
+            (www / "assets" / "app-abc123.js").write_text("console.log('ok');")
             replacements = {
                 "${LISTEN_IP}": "127.0.0.1",
                 "${LISTEN_PORT}": str(ports[index]),
@@ -123,6 +125,10 @@ try:
                     # Sin el puerto propio el backend rechaza los POST del navegador (CORS 403).
                     assert data["xfport"] == str(port), data
                 assert data["xfp"] == "http", data
+                # Archivos de Vite: cache larga si existen y 404 (no index.html) si faltan.
+                status, headers, body = request(port, "/assets/app-abc123.js")
+                assert status == 200 and "immutable" in headers["Cache-Control"], (status, headers)
+                assert request(port, "/assets/no-existe.js")[0] == 404
             statuses = [request(ports[0], "/api/auth/login", "POST")[0] for _ in range(15)]
             assert 200 in statuses and 429 in statuses, statuses
             # Origen del tunel: IP del visitante desde CF-Connecting-IP y proto https.
@@ -140,7 +146,8 @@ try:
             assert otro == 200, otro
             print("OK: entornos separados; /api y query preservados; health; /actuator restringido; "
                   "frontend con fallback SPA y CSP; cabeceras API sin duplicar; XFF saneado; login 429; "
-                  "tunel con IP del visitante, proto https y limite por visitante; X-Forwarded-Port")
+                  "tunel con IP del visitante, proto https y limite por visitante; X-Forwarded-Port; "
+                  "assets con cache larga y 404 si faltan")
         finally:
             if process.poll() is None:
                 process.terminate()
