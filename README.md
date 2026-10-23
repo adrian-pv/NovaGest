@@ -94,7 +94,9 @@ proxy_set_header Host              $host;
 proxy_set_header X-Forwarded-For   $remote_addr;   # sobrescribe: no usar $proxy_add_x_forwarded_for si Nginx es el primer proxy
 proxy_set_header X-Forwarded-Proto $scheme;        # sin esto el navegador recibe 403 en cada POST y no sale HSTS
 proxy_set_header X-Forwarded-Host  $host;
+proxy_set_header X-Forwarded-Port  $server_port;  # solo hace falta si Nginx escucha en un puerto que no es 80/443 (ver abajo)
 ```
+- **Puerto que no es el 80 ni el 443 (por ejemplo `http://IP:8083` por Tailscale):** el navegador manda `Origin` con ese puerto y el backend solo lo reconoce si el proxy envia `X-Forwarded-Port: $server_port`. **No basta con poner el puerto en `Host` ni en `X-Forwarded-Host`** (verificado: sigue el 403 "Invalid CORS request" en cada POST). Si no se puede enviar esa cabecera, la alternativa es `CORS_ORIGINS=http://IP:8083`. Hay pruebas que lo vigilan (`IpDelClienteTrasProxyTests`).
 - **Con Docker:** si el contenedor publica `127.0.0.1:8080:8080`, la API no ve `127.0.0.1` sino la puerta de enlace del puente de Docker (algo como `172.17.0.1`). Usa `PROXIES_CONFIANZA=172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}`, o la direccion exacta que muestre el registro. Si no coincide, las cabeceras se ignoran y el sintoma es que la bitacora sigue mostrando la IP del proxy.
 - **Alternativa para CORS:** si por alguna razon el proxy no puede enviar `Host` y `X-Forwarded-Proto`, poner `CORS_ORIGINS=https://tu-dominio` tambien evita el 403.
 - **Como comprobar el despliegue** (los tres pasos, en este orden): (1) registrar una cuenta de prueba por el dominio publico y mirar en la bitacora (`GET /api/bitacora`) que la `ip` es la del cliente y no la del proxy; (2) `curl -sI https://tu-dominio/actuator/health | grep -i strict-transport` debe mostrar `max-age=31536000`; (3) iniciar sesion desde el navegador: no debe haber ningun 403.

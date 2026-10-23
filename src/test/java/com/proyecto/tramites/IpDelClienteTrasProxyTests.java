@@ -192,6 +192,25 @@ class IpDelClienteTrasProxyTests {
 			assertThat(respuesta.cuerpo()).contains("Invalid CORS request");
 		}
 
+		@Test
+		void conUnPuertoQueNoEsElPorDefectoElProxyDebeEnviarXForwardedPort() throws Exception {
+			// Nginx escuchando en un puerto propio (por ejemplo 8083): el navegador manda Origin con ese puerto
+			PeticionCruda.Respuesta respuesta = login(cab("Host", "100.64.0.9", "Origin", "http://100.64.0.9:8083",
+					"X-Forwarded-Proto", "http", "X-Forwarded-Port", "8083", "X-Forwarded-For", clienteNuevo()));
+
+			assertThat(respuesta.estado()).isEqualTo(401);
+		}
+
+		@Test
+		void sinXForwardedPortUnPuertoNoEstandarRecibe403_ElPuertoEnHostONoEnXForwardedHostNoBasta() throws Exception {
+			PeticionCruda.Respuesta respuesta = login(cab("Host", "100.64.0.9:8083", "X-Forwarded-Host",
+					"100.64.0.9:8083", "Origin", "http://100.64.0.9:8083", "X-Forwarded-Proto", "http",
+					"X-Forwarded-For", clienteNuevo()));
+
+			assertThat(respuesta.estado()).isEqualTo(403);
+			assertThat(respuesta.cuerpo()).contains("Invalid CORS request");
+		}
+
 	}
 
 	/** Un proxy configurado que NO es el que se conecta: sus cabeceras tampoco valen. */
