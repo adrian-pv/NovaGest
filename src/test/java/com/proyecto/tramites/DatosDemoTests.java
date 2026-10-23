@@ -1,6 +1,7 @@
 package com.proyecto.tramites;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.jayway.jsonpath.JsonPath;
@@ -19,7 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
- * Tarjeta 24: con el perfil dev se cargan un usuario de ejemplo por rol y el tercer tipo de tramite.
+ * Tarjeta 24: con dev se cargan cinco usuarios (dos ciudadanos) y el tercer tipo de tramite.
  * Se activa dev sobre test para probar tambien la configuracion real (ubicacion db/dev y placeholder).
  */
 @Import(TestcontainersConfiguration.class)
@@ -48,6 +49,7 @@ class DatosDemoTests {
 	@ParameterizedTest
 	@CsvSource({
 			"ciudadano@novagest.test, CIUDADANO",
+			"ciudadano2@novagest.test, CIUDADANO",
 			"gestor@novagest.test, GESTOR",
 			"auditor@novagest.test, AUDITOR",
 			"administrador@novagest.test, ADMINISTRADOR" })
@@ -66,7 +68,26 @@ class DatosDemoTests {
 	@Test
 	void ningunaClaveDemoQuedaEnTextoPlano() {
 		assertThat(jdbc.queryForList("SELECT hash_contrasena FROM usuario WHERE correo LIKE '%@novagest.test'",
-				String.class)).hasSize(4).allSatisfy(hash -> assertThat(hash).startsWith("$2a$").doesNotContain(CLAVE_DEMO));
+				String.class)).hasSize(5).allSatisfy(hash -> assertThat(hash).startsWith("$2a$").doesNotContain(CLAVE_DEMO));
+	}
+
+	@Test
+	void segundoCiudadanoNoPuedeConsultarTramitesDelPrimero() throws Exception {
+		String tokenPrimero = JsonPath.read(login("ciudadano@novagest.test", CLAVE_DEMO)
+				.getResponse().getContentAsString(), "$.accessToken");
+		String tokenSegundo = JsonPath.read(login("ciudadano2@novagest.test", CLAVE_DEMO)
+				.getResponse().getContentAsString(), "$.accessToken");
+		Long tipoId = jdbc.queryForObject("SELECT id FROM tipo_tramite WHERE nombre = 'Boleto de ornato'", Long.class);
+		MvcResult creado = mvc.perform(post("/api/tramites")
+				.header("Authorization", "Bearer " + tokenPrimero)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"tipoId\":" + tipoId + ",\"datos\":{}}"))
+				.andReturn();
+		assertThat(creado.getResponse().getStatus()).isEqualTo(201);
+		Number id = JsonPath.read(creado.getResponse().getContentAsString(), "$.id");
+		assertThat(mvc.perform(get("/api/tramites/" + id)
+				.header("Authorization", "Bearer " + tokenSegundo))
+				.andReturn().getResponse().getStatus()).isEqualTo(404);
 	}
 
 	@Test
@@ -80,11 +101,11 @@ class DatosDemoTests {
 
 	@Test
 	void volverACorrerLaCargaNoDuplicaDatos() {
-		jdbc.update("DELETE FROM flyway_schema_history WHERE script = 'R__datos_demo.sql'");
+		jdbc.update("DELETE FROM flyway_schema_history WHERE script IN ('R__datos_demo.sql', 'R__segundo_ciudadano_demo.sql')");
 		flyway.migrate();
 
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM usuario WHERE correo LIKE '%@novagest.test'",
-				Integer.class)).isEqualTo(4);
+				Integer.class)).isEqualTo(5);
 		assertThat(jdbc.queryForObject(
 				"SELECT count(*) FROM tipo_tramite WHERE lower(nombre) = 'constancia de residencia'", Integer.class))
 				.isEqualTo(1);

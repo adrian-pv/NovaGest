@@ -5,6 +5,10 @@ Sistema de tramites ciudadanos (curso de Auditoria de Sistemas). API en Spring B
 Equipo de desarrollo: Ernesto (encargado), Brandom, Frank.
 Documentacion y tablero: Notion, pagina NovaGest.
 
+Manual por rol y demostracion: [manual de usuario](docs/manual/manual-usuario.md),
+[guion por pantallas](docs/manual/guion-demo.md) y
+[revision de las tarjetas 24, 30, 32 a 36 y 43](docs/manual/revision-tarjetas.md).
+
 ## Requisitos
 - Java 21
 - Docker Desktop encendido (pruebas con Testcontainers y base local)
@@ -107,16 +111,17 @@ Copiar `.env.example` a `.env` y completar. Los secretos entran solo por variabl
 - Si arrancas con `./mvnw spring-boot:run` o desde el IDE, agrega `SPRING_PROFILES_ACTIVE=dev` a tu `.env` (ya viene en `.env.example`).
 
 ## Datos de demostracion (perfil dev)
-Con el perfil `dev` la app carga un usuario de ejemplo por rol y un tercer tipo de tramite (constancia de residencia), desde `src/main/resources/db/dev/R__datos_demo.sql`. En `prod` no existen. Boleto de ornato y Pago de IGSS salen de la migracion V4.
+Con el perfil `dev` la app carga un administrador, un gestor, un auditor, dos ciudadanos y un tercer tipo de tramite (constancia de residencia). Los scripts repetibles de `src/main/resources/db/dev/` crean los datos sin modificar migraciones versionadas. En `prod` no existen. Boleto de ornato y Pago de IGSS salen de la migracion V4.
 
 | Rol | Correo | Que demostrar |
 |---|---|---|
 | Ciudadano | `ciudadano@novagest.test` | crear y enviar un tramite, subir comprobante, ver su historial |
+| Segundo ciudadano | `ciudadano2@novagest.test` | comprobar que no puede consultar el tramite ni los pagos del primer ciudadano |
 | Gestor | `gestor@novagest.test` | tomar, observar, rechazar, pasar a por pagar y validar pago |
 | Auditor | `auditor@novagest.test` | consultar tramites, pagos, usuarios, roles y bitacora (solo lectura) |
 | Administrador | `administrador@novagest.test` | crear usuarios, asignar roles y mantener tipos de tramite |
 
-La contrasena de los cuatro es el valor de `DEMO_PASSWORD` de tu `.env` (minimo 8 caracteres, sin comillas). Si falta, la app no arranca en `dev` y avisa en el log.
+La contrasena de las cinco cuentas es el valor de `DEMO_PASSWORD` de tu `.env` (minimo 8 caracteres, sin comillas). Si falta, la app no arranca en `dev` y avisa en el log. Al actualizar una base dev existente, Flyway agrega el segundo ciudadano sin borrar los datos.
 
 Si cambias `DEMO_PASSWORD` despues de la primera carga, los usuarios ya existentes conservan la clave anterior: ejecutar `docker compose down -v` y levantar de nuevo.
 

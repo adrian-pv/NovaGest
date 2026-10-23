@@ -23,6 +23,7 @@ import EditarUsuario from './usuarios/EditarUsuario'
 import ListaRoles from './usuarios/ListaRoles'
 import ListaUsuarios from './usuarios/ListaUsuarios'
 import NuevoUsuario from './usuarios/NuevoUsuario'
+import PagosPendientes from './pagos/PagosPendientes'
 
 /**
  * Rutas de la aplicación. Todas se dibujan dentro del marco común (Diseno). Las que exigen sesión van dentro de
@@ -41,6 +42,9 @@ export default function App() {
         </Route>
         <Route element={<RutaProtegida permiso="tramite:leer" alcanceTotal />}>
           <Route path="/bandeja" element={<Bandeja />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="pago:editar" alcanceTotal />}>
+          <Route path="/pagos" element={<PagosPendientes />} />
         </Route>
         <Route element={<RutaProtegida permiso="tramite:leer" />}>
           <Route path="/tramites" element={<ListaTramites />} />
