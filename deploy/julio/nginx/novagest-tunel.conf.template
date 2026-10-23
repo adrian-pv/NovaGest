@@ -21,5 +21,7 @@ server {
     # 443, no el puerto local del tunel (con 8183 el CORS del dominio fallaria).
     set $novagest_proto https;
     set $novagest_port 443;
+    # HSTS también en el frontend (el backend ya lo pone en la API al ver https).
+    set $novagest_hsts "max-age=31536000";
     include /etc/nginx/snippets/novagest-${NG_ENTORNO}-rutas.conf;
 }

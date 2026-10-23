@@ -49,7 +49,11 @@ espera "login con Origin ajeno" "$(login https://sitio-ajeno.example)" 403
 
 if [[ "$base" == https://* ]]; then
     grep -qi '^strict-transport-security:' <<<"$(cabeceras "$base/actuator/health")" \
-        && fila OK "HSTS" presente || fila FALLA "HSTS" ausente
+        && fila OK "HSTS en la API" presente || fila FALLA "HSTS en la API" ausente
+    if [[ $sin_frontend -eq 0 ]]; then
+        grep -qi '^strict-transport-security:' <<<"$(cabeceras "$base/")" \
+            && fila OK "HSTS en el frontend" presente || fila FALLA "HSTS en el frontend" ausente
+    fi
     http_url="http://${base#https://}/"
     red="$(curl -s -m 15 -o /dev/null -w '%{http_code} %{redirect_url}' "$http_url")"
     [[ "$red" == 30[178]\ https://* ]] && fila OK "HTTP redirige a HTTPS" "$red" || fila FALLA "HTTP redirige a HTTPS" "$red"
