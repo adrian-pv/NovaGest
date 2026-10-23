@@ -155,6 +155,47 @@ PGPASSWORD=... pg_restore -h <DB_HOST> -U <DB_USER> -d <DB_NAME> --clean --if-ex
 tramites-ctl rollback production
 ```
 
+## Frontend
+
+El mismo despliegue publica el frontend de la **misma etiqueta** que el backend (mismo código):
+
+1. `deploy.yml` compila `frontend/` en Actions (Node 22, `npm ci`, lint, pruebas y `npm run build` con
+   `VITE_API_BASE_URL` vacío, o sea mismo origen; no usa archivos `.env*`) y sube `frontend/dist` como la
+   imagen de solo archivos `ghcr.io/<owner>/novagest-frontend:<etiqueta>` (`deploy/adrian/frontend.Dockerfile`).
+   Si el frontend no compila o no pasa las pruebas, no se publica nada, tampoco el backend.
+2. `tramites-ctl deploy` baja esa imagen y la copia a `/var/www/novagest/releases/<entorno>/<etiqueta>`
+   (dueño deploy, carpetas 755, archivos 644) **antes** de tocar el backend. Si falta, el deploy se detiene
+   sin cambiar nada.
+3. Solo cuando el backend quedó UP, cambia el enlace `/var/www/novagest/<entorno>` (el root de Nginx) a esa
+   carpeta, de forma atómica (`ln -sfn` a un enlace nuevo + `mv -T`). Si el backend falla y se revierte,
+   el frontend publicado no cambia.
+4. `tramites-ctl rollback` vuelve también al frontend de la versión anterior si está guardado; si esa
+   versión no tenía frontend, deja el que está. Se conservan las últimas 5 versiones
+   (`KEEP_FRONTEND_RELEASES`), nunca la activa ni la anterior.
+
+No hay comando nuevo ni cambia la llave del pipeline. Nginx no cambia: sigue sirviendo
+`/var/www/novagest/<entorno>`, que ahora es un enlace.
+
+**Activarlo en un entorno (una sola vez, con sudo, coordinado con Julio):**
+
+```bash
+# 1. Dónde está la imagen del frontend (en minúsculas, sin etiqueta)
+sudo -u deploy sh -c 'echo FRONTEND_IMAGE=ghcr.io/ernestosantizo2003/novagest-frontend >> /opt/tramites/staging/.env'
+# 2. Carpetas de versiones; deploy debe poder renombrar el enlace dentro de /var/www/novagest
+sudo install -d -o deploy -g deploy -m 755 /var/www/novagest/releases /var/www/novagest/releases/staging
+sudo chown deploy:deploy /var/www/novagest && sudo chmod 755 /var/www/novagest
+# 3. La carpeta que hoy sirve Nginx pasa a ser una versión más, y en su lugar queda un enlace
+cd /var/www/novagest
+sudo ln -s releases/staging/manual staging.nuevo
+sudo mv staging releases/staging/manual
+sudo mv -T staging.nuevo staging
+sudo chown -h deploy:deploy staging && sudo chown -R deploy:deploy releases/staging/manual
+ls -l /var/www/novagest            # staging -> releases/staging/manual
+```
+
+Mientras `/var/www/novagest/<entorno>` siga siendo una carpeta, `tramites-ctl deploy` se detiene antes de
+tocar nada y lo indica. Sin `FRONTEND_IMAGE` en `.env` (por ejemplo, producción hoy) no se publica frontend.
+
 ## Notas para Marlon (respaldo diario)
 
 Los comprobantes NO están en la base: respaldar también el volumen `novagest-production_comprobantes` (en `/var/lib/docker/volumes/novagest-production_comprobantes/_data`, requiere root), coordinado con el volcado de la base.

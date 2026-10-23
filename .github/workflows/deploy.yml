@@ -4,6 +4,8 @@
 # en un push a develop o main.
 #
 #   push a develop + CI verde -> construye imagen -> GHCR -> escaneo -> despliegue a pruebas (8081)
+#                                + compila el frontend -> imagen novagest-frontend:<misma etiqueta> -> tramites-ctl
+#                                  lo publica en /var/www/novagest/staging cuando el backend quedó UP
 #   push a main    + CI verde -> busca la imagen YA probada de ese mismo código -> aprobación -> producción (8080)
 #   manual (Run workflow)     -> rollback o status en cualquier entorno
 #
@@ -62,6 +64,29 @@ jobs:
         run: |
           echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/novagest" >> "$GITHUB_OUTPUT"
           echo "tag=$(git rev-parse --short=12 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+      # Frontend: se verifica y compila ANTES de publicar nada; si falla, no sube ni el backend.
+      # VITE_API_BASE_URL vacío = mismo origen (Nginx manda /api al backend). Sin archivos .env*: todo lo
+      # VITE_ queda visible en el navegador, así que el build solo usa lo que está en este paso.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Compilar y probar el frontend
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ''
+        run: |
+          extra="$(git ls-files -- '.env*' | grep -vx '.env.example' || true)"
+          if [ -n "$extra" ]; then
+            echo "::error::Hay archivos .env en frontend/ dentro del repositorio; el build no los debe usar."
+            exit 1
+          fi
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+          test -s dist/index.html
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -93,6 +118,19 @@ jobs:
         env:
           REF: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
         run: docker push "$REF"
+      # Solo archivos estáticos (FROM scratch): misma etiqueta que el backend, así tramites-ctl
+      # publica el frontend que corresponde a ese mismo código.
+      - name: Publicar el frontend en GHCR
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend/dist
+          file: deploy/adrian/frontend.Dockerfile
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.image }}-frontend:${{ steps.meta.outputs.tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
   deploy-staging:
     name: Desplegar en pruebas
