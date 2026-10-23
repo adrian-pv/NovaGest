@@ -45,7 +45,7 @@ it('descarga el comprobante desde la lista con el cliente autenticado', async ()
   renderizarApp('/pagos')
   await userEvent
     .setup()
-    .click(await screen.findByRole('button', { name: 'Descargar comprobante' }))
+    .click(await screen.findByRole('button', { name: 'Descargar el comprobante del pago 5' }))
   expect(guardarArchivo).toHaveBeenCalledWith(expect.anything(), 'prueba.pdf', 'comprobante-5')
 })
 
@@ -60,7 +60,7 @@ it('valida y retira el pago resuelto de la lista', async () => {
   })
   renderizarApp('/pagos')
   const usuario = userEvent.setup()
-  await usuario.click(await screen.findByRole('button', { name: 'Validar pago' }))
+  await usuario.click(await screen.findByRole('button', { name: 'Validar el pago 5' }))
   await usuario.click(screen.getByRole('button', { name: 'Confirmar validación' }))
   expect(await screen.findByText('No hay pagos pendientes en esta página.')).toBeInTheDocument()
 })
@@ -71,7 +71,7 @@ it('explica por qué no se puede resolver un pago registrado por la misma person
   expect(
     await screen.findByText('No puedes resolver un pago que tú registraste.'),
   ).toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'Validar pago' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Validar el pago 5' })).not.toBeInTheDocument()
 })
 
 it.each([

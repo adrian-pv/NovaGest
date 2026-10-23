@@ -78,6 +78,7 @@ function Revision({ pago, alResolver }: { pago: Pago; alResolver: () => void }) 
     <>
       <Boton
         variante="secundario"
+        aria-label={`Descargar el comprobante del pago ${pago.id}`}
         cargando={descargando}
         textoCargando="Descargando..."
         onClick={() => void descargar()}

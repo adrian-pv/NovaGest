@@ -48,8 +48,15 @@ export default function ResolverPago({ pago, alResolver }: { pago: Pago; alResol
     <div className="seccion">
       {!decision ? (
         <div className="acciones-formulario">
-          <Boton onClick={() => elegir('VALIDAR')}>Validar pago</Boton>
-          <Boton variante="peligro" onClick={() => elegir('RECHAZAR')}>
+          {/* El nombre accesible lleva el número: en la lista hay un par de botones por fila. */}
+          <Boton aria-label={`Validar el pago ${pago.id}`} onClick={() => elegir('VALIDAR')}>
+            Validar pago
+          </Boton>
+          <Boton
+            variante="peligro"
+            aria-label={`Rechazar el pago ${pago.id}`}
+            onClick={() => elegir('RECHAZAR')}
+          >
             Rechazar pago
           </Boton>
         </div>

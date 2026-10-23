@@ -1,4 +1,4 @@
-import { screen, within, waitFor } from '@testing-library/react'
+import { fireEvent, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { Perfil } from '../api/tipos'
@@ -48,7 +48,7 @@ it('confirma la validación y recarga el estado, las acciones y el historial', a
   const llamadas = abrir()
   const region = await seccion()
   const usuario = userEvent.setup()
-  await usuario.click(region.getByRole('button', { name: 'Validar pago' }))
+  await usuario.click(region.getByRole('button', { name: 'Validar el pago 5' }))
   expect(
     llamadas.filter((l) => l.metodo === 'POST' && l.ruta.includes('/validacion')),
   ).toHaveLength(0)
@@ -62,14 +62,14 @@ it('confirma la validación y recarga el estado, las acciones y el historial', a
   await waitFor(() =>
     expect(llamadas.filter((l) => l.ruta.endsWith('/historial')).length).toBeGreaterThan(2),
   )
-  expect(region.queryByRole('button', { name: 'Validar pago' })).not.toBeInTheDocument()
+  expect(region.queryByRole('button', { name: 'Validar el pago 5' })).not.toBeInTheDocument()
 })
 
 it('exige un motivo no vacío al rechazar y conserva el trámite por pagar', async () => {
   const llamadas = abrir()
   const region = await seccion()
   const usuario = userEvent.setup()
-  await usuario.click(region.getByRole('button', { name: 'Rechazar pago' }))
+  await usuario.click(region.getByRole('button', { name: 'Rechazar el pago 5' }))
   const confirmar = region.getByRole('button', { name: 'Confirmar rechazo' })
   expect(confirmar).toBeDisabled()
   await usuario.type(region.getByLabelText('Motivo del rechazo'), '   ')
@@ -94,8 +94,8 @@ it.each([
 ])('no ofrece decisiones sin pago:editar', async (perfil) => {
   const llamadas = abrir(perfil)
   const region = await seccion()
-  expect(region.queryByRole('button', { name: 'Validar pago' })).not.toBeInTheDocument()
-  expect(region.queryByRole('button', { name: 'Rechazar pago' })).not.toBeInTheDocument()
+  expect(region.queryByRole('button', { name: 'Validar el pago 5' })).not.toBeInTheDocument()
+  expect(region.queryByRole('button', { name: 'Rechazar el pago 5' })).not.toBeInTheDocument()
   expect(llamadas.some((l) => l.ruta.endsWith('/validacion'))).toBe(false)
 })
 
@@ -103,19 +103,21 @@ it('impide resolver un pago propio aunque tenga el permiso', async () => {
   abrir(GESTOR, pago({ creadoPor: GESTOR.id }))
   const region = await seccion()
   expect(region.getByText('No puedes resolver un pago que tú registraste.')).toBeInTheDocument()
-  expect(region.queryByRole('button', { name: 'Validar pago' })).not.toBeInTheDocument()
+  expect(region.queryByRole('button', { name: 'Validar el pago 5' })).not.toBeInTheDocument()
 })
 
 it.each(['VALIDADO', 'RECHAZADO'] as const)('no permite resolver un pago %s', async (estado) => {
   abrir(GESTOR, pago({ estado }))
-  expect((await seccion()).queryByRole('button', { name: 'Validar pago' })).not.toBeInTheDocument()
+  expect(
+    (await seccion()).queryByRole('button', { name: 'Validar el pago 5' }),
+  ).not.toBeInTheDocument()
 })
 
 it.each([403, 409])('muestra el error %s sin presentar una decisión exitosa', async (estado) => {
   abrir(GESTOR, pago(), estado)
   const region = await seccion()
   const usuario = userEvent.setup()
-  await usuario.click(region.getByRole('button', { name: 'Validar pago' }))
+  await usuario.click(region.getByRole('button', { name: 'Validar el pago 5' }))
   await usuario.click(region.getByRole('button', { name: 'Confirmar validación' }))
   expect(await region.findByRole('alert')).toBeInTheDocument()
   expect(
@@ -125,12 +127,26 @@ it.each([403, 409])('muestra el error %s sin presentar una decisión exitosa', a
     expect(region.getByRole('button', { name: 'Actualizar estado del pago' })).toBeInTheDocument()
 })
 
+it('dos envíos seguidos de la confirmación mandan una sola decisión', async () => {
+  const llamadas = abrir()
+  const region = await seccion()
+  await userEvent.setup().click(region.getByRole('button', { name: 'Validar el pago 5' }))
+  const formulario = region.getByRole('button', { name: 'Confirmar validación' }).closest('form')!
+  // Dos envíos antes de que React vuelva a pintar: solo la guardia ocupado.current frena el segundo.
+  fireEvent.submit(formulario)
+  fireEvent.submit(formulario)
+  expect(
+    await screen.findByText('El pago fue validado y el trámite quedó finalizado.'),
+  ).toBeInTheDocument()
+  expect(llamadas.filter((l) => l.ruta.endsWith('/validacion'))).toHaveLength(1)
+})
+
 it('cancelar no envía ninguna decisión', async () => {
   const llamadas = abrir()
   const region = await seccion()
   const usuario = userEvent.setup()
-  await usuario.click(region.getByRole('button', { name: 'Validar pago' }))
+  await usuario.click(region.getByRole('button', { name: 'Validar el pago 5' }))
   await usuario.click(region.getByRole('button', { name: 'Cancelar' }))
-  expect(region.getByRole('button', { name: 'Validar pago' })).toBeInTheDocument()
+  expect(region.getByRole('button', { name: 'Validar el pago 5' })).toBeInTheDocument()
   expect(llamadas.some((l) => l.ruta.endsWith('/validacion'))).toBe(false)
 })

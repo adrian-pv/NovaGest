@@ -84,7 +84,7 @@ try {
   await capturar('03-ciudadano-borrador', 'CIUDADANO', '/tramites/12', 'BORRADOR')
   await capturar('04-ciudadano-pago', 'CIUDADANO', '/tramites/12')
   await capturar('05-gestor-pendientes', 'GESTOR', '/pagos')
-  await capturar('06-gestor-confirmacion', 'GESTOR', '/pagos', 'POR_PAGAR', async (p) => { await p.getByRole('button', { name: 'Validar pago' }).click() })
+  await capturar('06-gestor-confirmacion', 'GESTOR', '/pagos', 'POR_PAGAR', async (p) => { await p.getByRole('button', { name: /^Validar el pago / }).click() })
   await capturar('07-auditor-detalle', 'AUDITOR', '/tramites/12', 'FINALIZADO')
   await capturar('08-administrador-usuarios', 'ADMINISTRADOR', '/usuarios')
   await capturar('09-administrador-roles', 'ADMINISTRADOR', '/roles')
