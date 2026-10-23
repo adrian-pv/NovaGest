@@ -43,6 +43,15 @@ location / {
     add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
 }
 
+# Archivos de Vite con hash en el nombre: cache larga, y 404 si no existen (sin
+# fallback a index.html, que devolveria HTML con 200 a un pedido de JS o CSS).
+location /assets/ {
+    root ${FRONTEND_ROOT};
+    try_files $uri =404;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    add_header X-Content-Type-Options "nosniff" always;
+}
+
 location = /index.html {
     root ${FRONTEND_ROOT};
     add_header Cache-Control "no-cache" always;
