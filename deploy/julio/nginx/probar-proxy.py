@@ -122,6 +122,8 @@ try:
                     assert status == 200 and b"<title>" in body, (status, body)
                     assert headers["X-Frame-Options"] == "DENY"
                     assert "frame-ancestors 'none'" in headers["Content-Security-Policy"]
+                    # El acceso privado es HTTP: no lleva HSTS.
+                    assert "Strict-Transport-Security" not in headers, headers
                     # Sin el puerto propio el backend rechaza los POST del navegador (CORS 403).
                     assert data["xfport"] == str(port), data
                 assert data["xfp"] == "http", data
@@ -139,6 +141,9 @@ try:
                 assert data["xff"] == "198.51.100.20" and data["xfp"] == "https", data
                 assert data["xfport"] == "443", data
                 assert request(port, "/actuator/env")[0] == 404
+                # El origen del túnel sirve HTTPS hacia el visitante: el frontend lleva HSTS.
+                status, headers, body = request(port, "/")
+                assert status == 200 and headers.get("Strict-Transport-Security") == "max-age=31536000", headers
             visitante = {"CF-Connecting-IP": "198.51.100.30"}
             statuses = [request(ports[3], "/api/auth/login", "POST", visitante)[0] for _ in range(15)]
             assert 429 in statuses, statuses

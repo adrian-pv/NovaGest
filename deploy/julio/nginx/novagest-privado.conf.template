@@ -15,5 +15,6 @@ server {
 
     set $novagest_proto $scheme;
     set $novagest_port $server_port;
+    set $novagest_hsts "";
     include /etc/nginx/snippets/novagest-${NG_ENTORNO}-rutas.conf;
 }

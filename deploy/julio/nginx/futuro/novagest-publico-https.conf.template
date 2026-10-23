@@ -22,6 +22,8 @@ server {
     # Variables que usa novagest-proxy-headers.conf.
     set $novagest_proto https;
     set $novagest_port 443;
+    # La plantilla futura ya pone HSTS fijo en el frontend; la variable es para las rutas comunes.
+    set $novagest_hsts "";
 
     location = /api/auth/login {
         limit_req zone=novagest_login burst=5 nodelay;
