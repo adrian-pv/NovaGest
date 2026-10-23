@@ -25,8 +25,10 @@ rm -f -- "/etc/nginx/snippets/novagest-$entorno-rutas.conf"
 if ! compgen -G "/etc/nginx/sites-enabled/novagest-*.conf" > /dev/null; then
     rm -f -- /etc/nginx/conf.d/novagest-rate-limit.conf \
              /etc/nginx/snippets/novagest-proxy-headers.conf \
-             /etc/systemd/system/nginx.service.d/novagest-espera-tailscale.conf
+             /etc/systemd/system/nginx.service.d/novagest-espera-tailscale.conf \
+             /etc/sysctl.d/60-novagest-nonlocal-bind.conf
     rmdir --ignore-fail-on-non-empty /etc/systemd/system/nginx.service.d 2>/dev/null || true
+    sysctl -q -w net.ipv4.ip_nonlocal_bind=0
     systemctl daemon-reload
 fi
 
