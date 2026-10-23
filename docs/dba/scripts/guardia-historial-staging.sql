@@ -10,6 +10,14 @@ SELECT current_database()='tramites_pruebas' AS base_correcta \gset
 -- NOINHERIT puede ocultar privilegios disponibles mediante SET ROLE.
 SELECT NOT pg_has_role('tramites_app','tramites_owner','USAGE')
   AND NOT pg_has_role('tramites_app','tramites_owner','SET')
+  -- Revisar TODOS los roles alcanzables con SET, aunque no herede sus permisos.
+  AND NOT EXISTS(SELECT FROM pg_roles r
+    WHERE r.oid <> 'tramites_app'::regrole
+      AND pg_has_role('tramites_app',r.oid,'SET')
+      AND (has_table_privilege(r.oid,'tramites.flyway_schema_history',
+        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
+        OR has_any_column_privilege(r.oid,'tramites.flyway_schema_history',
+        'SELECT,INSERT,UPDATE,REFERENCES')))
   AND NOT has_table_privilege('tramites_app','tramites.flyway_schema_history',
   'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
   AND NOT has_any_column_privilege('tramites_app','tramites.flyway_schema_history',
