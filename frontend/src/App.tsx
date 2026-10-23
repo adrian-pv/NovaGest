@@ -1,5 +1,10 @@
 import { Route, Routes } from 'react-router-dom'
 import Diseno from './componentes/Diseno'
+import EditarIngreso from './ingresos/EditarIngreso'
+import ListaIngresos from './ingresos/ListaIngresos'
+import NuevoIngreso from './ingresos/NuevoIngreso'
+import Proyeccion from './ingresos/Proyeccion'
+import TipoCambio from './ingresos/TipoCambio'
 import Ingresar from './paginas/Ingresar'
 import Inicio from './paginas/Inicio'
 import NoEncontrado from './paginas/NoEncontrado'
@@ -46,6 +51,17 @@ export default function App() {
         </Route>
         <Route element={<RutaProtegida permiso="tramite:editar" />}>
           <Route path="/tramites/:id/editar" element={<EditarTramite />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="ingreso:leer" />}>
+          <Route path="/ingresos" element={<ListaIngresos />} />
+          <Route path="/ingresos/proyeccion" element={<Proyeccion />} />
+          <Route path="/divisas" element={<TipoCambio />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="ingreso:crear" />}>
+          <Route path="/ingresos/nuevo" element={<NuevoIngreso />} />
+        </Route>
+        <Route element={<RutaProtegida permiso="ingreso:editar" />}>
+          <Route path="/ingresos/:id/editar" element={<EditarIngreso />} />
         </Route>
         <Route element={<RutaProtegida permiso="tipo_tramite:editar" />}>
           <Route path="/tipos" element={<ListaTipos />} />
