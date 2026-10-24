@@ -28,7 +28,12 @@ if ! compgen -G "/etc/nginx/sites-enabled/novagest-*.conf" > /dev/null; then
              /etc/systemd/system/nginx.service.d/novagest-espera-tailscale.conf \
              /etc/sysctl.d/60-novagest-nonlocal-bind.conf
     rmdir --ignore-fail-on-non-empty /etc/systemd/system/nginx.service.d 2>/dev/null || true
-    sysctl -q -w net.ipv4.ip_nonlocal_bind=0
+    # Devolver el valor que tenía el servidor antes de NovaGest (lo guardó el instalador).
+    original=/root/novagest-respaldos/ip_nonlocal_bind.original
+    valor="$(cat "$original" 2>/dev/null || echo 0)"
+    [[ "$valor" =~ ^[01]$ ]] || valor=0
+    sysctl -q -w "net.ipv4.ip_nonlocal_bind=$valor"
+    rm -f -- "$original"
     systemctl daemon-reload
 fi
 
