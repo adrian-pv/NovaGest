@@ -128,10 +128,17 @@ for f in "$dest_sitio" "$link_sitio" "$dest_tunel" "$link_tunel" "$dest_rutas" "
     [[ -e "$f" || -L "$f" ]] || nuevos+=("$f")
 done
 
+# ip_nonlocal_bind afecta a todo el servidor: se guarda el valor que tenía antes
+# de NovaGest (una sola vez) para que restaurar y la reversión lo devuelvan.
+bind_previo="$(sysctl -n net.ipv4.ip_nonlocal_bind)"
+valor_original="$respaldo_dir/ip_nonlocal_bind.original"
+[[ -e "$dest_sysctl" || -e "$valor_original" ]] || echo "$bind_previo" > "$valor_original"
+
 restaurar() {
     echo "Restaurando respaldo..." >&2
     for f in "${nuevos[@]}"; do rm -f -- "$f"; done
     tar -xzPf "$respaldo"
+    sysctl -q -w "net.ipv4.ip_nonlocal_bind=$bind_previo"
     systemctl daemon-reload
     nginx -t -q && echo "Configuracion anterior restaurada y valida." >&2
 }
