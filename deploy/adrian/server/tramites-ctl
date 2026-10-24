@@ -105,7 +105,8 @@ backup_before_migration() {
   [[ "$ENVIRONMENT" == production ]] || return 0
   command -v pg_dump >/dev/null \
     || die "falta pg_dump en el servidor (sudo apt install postgresql-client); sin respaldo no se despliega a producción"
-  mkdir -p "$DIR/backups"
+  # Carpeta y archivos del respaldo privados desde su creacion (no solo tras el chmod final).
+  install -d -m 750 "$DIR/backups"
   local stamp file
   stamp="$(date -u '+%Y%m%dT%H%M%SZ')"
   file="$DIR/backups/pre-deploy-$stamp-$1.dump"
@@ -117,9 +118,10 @@ backup_before_migration() {
   local user pass
   user="$(envval FLYWAY_USER)"; pass="$(envval FLYWAY_PASSWORD)"
   [[ -n "$user" ]] || { user="$(envval DB_USER)"; pass="$(envval DB_PASSWORD)"; }
-  PGPASSWORD="$pass" pg_dump -Fc \
+  # umask 077 en un subshell: el .tmp nace 600, aunque pg_dump falle a medias.
+  ( umask 077; PGPASSWORD="$pass" pg_dump -Fc \
     -h "${host:-127.0.0.1}" -p "${port:-5432}" \
-    -U "$user" -d "$(envval DB_NAME)" >"$file.tmp" \
+    -U "$user" -d "$(envval DB_NAME)" >"$file.tmp" ) \
     || { rm -f "$file.tmp"; die "pg_dump falló; no se despliega sin respaldo"; }
   mv "$file.tmp" "$file"; chmod 600 "$file"
   # Conserva solo los últimos N respaldos previos a despliegue.
